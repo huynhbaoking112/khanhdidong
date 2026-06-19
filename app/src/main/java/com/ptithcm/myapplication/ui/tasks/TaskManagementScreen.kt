@@ -208,7 +208,8 @@ internal fun TaskManagementScreen(
                     attachments = remember(task.id, attachmentsVersion) { onListTaskAttachments(task.id) },
                     comments = remember(task.id, commentsVersion) { onListTaskComments(task.id) },
                     history = remember(task.id, historyVersion) { onListTaskHistory(task.id) },
-                    canManage = canManage,
+                    canEditDetails = true,
+                    canManageAttachments = canManage,
                     onDismiss = { detailTask = null },
                     onSave = { status, progress, notes ->
                         val error = onUpdateTaskDetails(task.id, status, progress, notes)

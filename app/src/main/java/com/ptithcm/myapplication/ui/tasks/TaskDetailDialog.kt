@@ -55,7 +55,8 @@ internal fun TaskDetailDialog(
     attachments: List<TaskAttachment>,
     comments: List<TaskComment>,
     history: List<TaskHistoryEntry>,
-    canManage: Boolean,
+    canEditDetails: Boolean,
+    canManageAttachments: Boolean,
     onDismiss: () -> Unit,
     onSave: (TaskStatus, Int, String) -> Boolean,
     onAddAttachment: (String, String, String, Long) -> Boolean,
@@ -113,7 +114,7 @@ internal fun TaskDetailDialog(
 
                 StatusSelector(
                     status = status,
-                    enabled = canManage && !task.isDeleted,
+                    enabled = canEditDetails && !task.isDeleted,
                     onStatusChange = {
                         status = it
                         if (it == TaskStatus.DONE) progressText = "100"
@@ -128,7 +129,7 @@ internal fun TaskDetailDialog(
                         if (progressText == "100") status = TaskStatus.DONE
                         errorMessage = null
                     },
-                    enabled = canManage && !task.isDeleted,
+                    enabled = canEditDetails && !task.isDeleted,
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                     label = { Text("Progress (%)") }
@@ -144,7 +145,7 @@ internal fun TaskDetailDialog(
                         notes = it
                         errorMessage = null
                     },
-                    enabled = canManage && !task.isDeleted,
+                    enabled = canEditDetails && !task.isDeleted,
                     modifier = Modifier.fillMaxWidth(),
                     minLines = 3,
                     label = { Text("Notes") }
@@ -152,7 +153,7 @@ internal fun TaskDetailDialog(
 
                 AttachmentSection(
                     attachments = attachments,
-                    canManage = canManage && !task.isDeleted,
+                    canManage = canManageAttachments && !task.isDeleted,
                     onAddAttachment = {
                         errorMessage = null
                         attachmentLauncher.launch(arrayOf("*/*"))
@@ -193,7 +194,7 @@ internal fun TaskDetailDialog(
             }
         },
         confirmButton = {
-            if (canManage && !task.isDeleted) {
+            if (canEditDetails && !task.isDeleted) {
                 Button(
                     onClick = {
                         val parsedProgress = progressText.toIntOrNull()
