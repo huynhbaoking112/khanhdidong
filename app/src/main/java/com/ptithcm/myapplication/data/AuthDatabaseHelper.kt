@@ -121,6 +121,33 @@ data class DashboardStats(
     val highPriorityTasks: Int
 )
 
+data class ReportMetric(
+    val label: String,
+    val count: Int
+)
+
+data class ProjectReport(
+    val projectName: String,
+    val totalTasks: Int,
+    val doneTasks: Int
+)
+
+data class MemberPerformanceReport(
+    val memberName: String,
+    val totalTasks: Int,
+    val doneTasks: Int
+)
+
+data class ReportData(
+    val totalProjects: Int,
+    val totalTasks: Int,
+    val completionPercent: Int,
+    val statusMetrics: List<ReportMetric>,
+    val priorityMetrics: List<ReportMetric>,
+    val projectReports: List<ProjectReport>,
+    val memberPerformance: List<MemberPerformanceReport>
+)
+
 class AuthDatabaseHelper(context: Context) :
     SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
@@ -506,6 +533,41 @@ class AuthDatabaseHelper(context: Context) :
             doneTasks = tasks.count { it.status == TaskStatus.DONE },
             overdueTasks = tasks.count { it.status == TaskStatus.OVERDUE },
             highPriorityTasks = tasks.count { it.priority == TaskPriority.HIGH }
+        )
+    }
+
+    fun getReportData(user: UserSession): ReportData {
+        val projects = listProjectsForUser(user)
+        val tasks = listTasksForUser(user, includeDeleted = false)
+        val completionPercent = if (tasks.isEmpty()) 0 else tasks.count { it.status == TaskStatus.DONE } * 100 / tasks.size
+
+        return ReportData(
+            totalProjects = projects.size,
+            totalTasks = tasks.size,
+            completionPercent = completionPercent,
+            statusMetrics = TaskStatus.values().map { status ->
+                ReportMetric(status.value, tasks.count { it.status == status })
+            },
+            priorityMetrics = TaskPriority.values().map { priority ->
+                ReportMetric(priority.value, tasks.count { it.priority == priority })
+            },
+            projectReports = projects.map { project ->
+                val projectTasks = tasks.filter { it.projectId == project.id }
+                ProjectReport(
+                    projectName = project.name,
+                    totalTasks = projectTasks.size,
+                    doneTasks = projectTasks.count { it.status == TaskStatus.DONE }
+                )
+            }.sortedByDescending { it.totalTasks },
+            memberPerformance = tasks.groupBy { it.assigneeName }
+                .map { (memberName, memberTasks) ->
+                    MemberPerformanceReport(
+                        memberName = memberName,
+                        totalTasks = memberTasks.size,
+                        doneTasks = memberTasks.count { it.status == TaskStatus.DONE }
+                    )
+                }
+                .sortedByDescending { it.doneTasks }
         )
     }
 

@@ -33,6 +33,7 @@ import com.ptithcm.myapplication.ui.auth.LoginScreen
 import com.ptithcm.myapplication.ui.home.HomeScreen
 import com.ptithcm.myapplication.ui.profile.ProfileScreen
 import com.ptithcm.myapplication.ui.projects.ProjectManagementScreen
+import com.ptithcm.myapplication.ui.reports.ReportsScreen
 import com.ptithcm.myapplication.ui.tasks.TaskManagementScreen
 
 @Composable
@@ -268,6 +269,13 @@ internal fun TaskManagerApp(
                     }
                 )
 
+                screen == AppScreen.Reports -> ReportsScreen(
+                    reportData = remember(projectsVersion, tasksVersion, user.id, user.role) {
+                        database.getReportData(user)
+                    },
+                    onBack = { screen = AppScreen.Home }
+                )
+
                 else -> HomeScreen(
                     user = user,
                     dashboardStats = remember(projectsVersion, tasksVersion, user.id, user.role) {
@@ -276,6 +284,7 @@ internal fun TaskManagerApp(
                     onManageUsers = { screen = AppScreen.UserManagement },
                     onManageProjects = { screen = AppScreen.ProjectManagement },
                     onManageTasks = { screen = AppScreen.TaskManagement },
+                    onViewReports = { screen = AppScreen.Reports },
                     onChangePassword = { screen = AppScreen.ChangePassword },
                     onLogout = {
                         sessionManager.clearSession()
@@ -337,7 +346,8 @@ private enum class AppScreen {
     UserManagement,
     ProjectManagement,
     TaskManagement,
-    Profile
+    Profile,
+    Reports
 }
 
 private fun UserSaveResult.toErrorMessage(): String? = when (this) {

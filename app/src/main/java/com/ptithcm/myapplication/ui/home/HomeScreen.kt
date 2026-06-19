@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Folder
@@ -51,6 +52,7 @@ internal fun HomeScreen(
     onManageUsers: () -> Unit,
     onManageProjects: () -> Unit,
     onManageTasks: () -> Unit,
+    onViewReports: () -> Unit,
     onChangePassword: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -63,6 +65,7 @@ internal fun HomeScreen(
     ) {
         UserHeaderCard(user)
         DashboardStatsGrid(dashboardStats)
+        ReportsActionCard(onViewReports)
         ProjectActionsCard(user.role, onManageProjects)
         TaskActionsCard(user.role, onManageTasks)
         if (user.role == UserRole.ADMIN) {
@@ -248,6 +251,39 @@ private fun UserHeaderCard(user: UserSession) {
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.86f)
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportsActionCard(onViewReports: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Reports",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "View task status, priority, project progress and member performance.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onViewReports
+            ) {
+                Icon(Icons.Filled.Assessment, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("View reports")
             }
         }
     }
