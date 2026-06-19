@@ -173,12 +173,11 @@ internal fun TaskManagerApp(
                         error
                     },
                     onDeleteProject = { projectId ->
-                        if (database.deleteProject(projectId)) {
+                        val error = database.deleteProject(projectId).toErrorMessage()
+                        if (error == null) {
                             projectsVersion++
-                            null
-                        } else {
-                            "Project not found"
                         }
+                        error
                     }
                 )
 
@@ -359,6 +358,8 @@ private fun UserSaveResult.toErrorMessage(): String? = when (this) {
 private fun ProjectSaveResult.toErrorMessage(): String? = when (this) {
     ProjectSaveResult.SUCCESS -> null
     ProjectSaveResult.DUPLICATE_NAME -> "Project name already exists"
+    ProjectSaveResult.HAS_TASKS -> "Cannot delete a project that still has active tasks"
+    ProjectSaveResult.HAS_ASSIGNED_TASKS -> "Cannot remove members who still have active tasks in this project"
     ProjectSaveResult.NOT_FOUND -> "Project not found"
 }
 

@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,7 @@ internal fun ProjectManagementScreen(
 ) {
     val canManage = currentUser.role == UserRole.ADMIN || currentUser.role == UserRole.MANAGER
     var editingProject by remember { mutableStateOf<ProjectSummary?>(null) }
+    var projectToDelete by remember { mutableStateOf<ProjectSummary?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
@@ -120,16 +122,40 @@ internal fun ProjectManagementScreen(
                     message = null
                 },
                 onDeleteProject = { project ->
-                    val error = onDeleteProject(project.id)
-                    isError = error != null
-                    message = error ?: "Project deleted"
-                    if (error == null && editingProject?.id == project.id) {
-                        editingProject = null
-                        showEditor = false
-                    }
+                    projectToDelete = project
+                    message = null
                 }
             )
         }
+    }
+
+    projectToDelete?.let { project ->
+        AlertDialog(
+            onDismissRequest = { projectToDelete = null },
+            title = { Text("Delete project") },
+            text = { Text("Are you sure you want to delete ${project.name}? Projects with active tasks cannot be deleted.") },
+            dismissButton = {
+                OutlinedButton(onClick = { projectToDelete = null }) {
+                    Text("Cancel")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val error = onDeleteProject(project.id)
+                        isError = error != null
+                        message = error ?: "Project deleted"
+                        if (error == null && editingProject?.id == project.id) {
+                            editingProject = null
+                            showEditor = false
+                        }
+                        projectToDelete = null
+                    }
+                ) {
+                    Text("Delete")
+                }
+            }
+        )
     }
 }
 

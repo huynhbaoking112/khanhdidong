@@ -64,6 +64,8 @@ data class ProjectSummary(
 enum class ProjectSaveResult {
     SUCCESS,
     DUPLICATE_NAME,
+    HAS_TASKS,
+    HAS_ASSIGNED_TASKS,
     NOT_FOUND
 }
 
@@ -439,6 +441,12 @@ class AuthDatabaseHelper(context: Context) :
     ): ProjectSaveResult {
         if (projectNameExists(name.trim(), exceptProjectId = projectId)) return ProjectSaveResult.DUPLICATE_NAME
 
+        val creatorId = getProjectCreatorId(projectId) ?: return ProjectSaveResult.NOT_FOUND
+        val safeMemberIds = memberIds + creatorId
+        if (hasTasksAssignedOutsideProjectMembers(projectId, safeMemberIds)) {
+            return ProjectSaveResult.HAS_ASSIGNED_TASKS
+        }
+
         val db = writableDatabase
         db.beginTransaction()
         return try {
@@ -454,7 +462,7 @@ class AuthDatabaseHelper(context: Context) :
             )
             if (updatedRows != 1) return ProjectSaveResult.NOT_FOUND
 
-            replaceProjectMembers(db, projectId, memberIds)
+            replaceProjectMembers(db, projectId, safeMemberIds)
             db.setTransactionSuccessful()
             ProjectSaveResult.SUCCESS
         } finally {
@@ -462,16 +470,19 @@ class AuthDatabaseHelper(context: Context) :
         }
     }
 
-    fun deleteProject(projectId: Long): Boolean {
+    fun deleteProject(projectId: Long): ProjectSaveResult {
+        if (countActiveTasksForProject(projectId) > 0) return ProjectSaveResult.HAS_TASKS
+
         val values = ContentValues().apply {
             put(PROJECT_IS_DELETED, 1)
         }
-        return writableDatabase.update(
+        val updatedRows = writableDatabase.update(
             TABLE_PROJECTS,
             values,
             "$PROJECT_ID = ? AND $PROJECT_IS_DELETED = 0",
             arrayOf(projectId.toString())
-        ) == 1
+        )
+        return if (updatedRows == 1) ProjectSaveResult.SUCCESS else ProjectSaveResult.NOT_FOUND
     }
 
     fun listTasksForUser(user: UserSession, includeDeleted: Boolean): List<TaskItem> {
@@ -865,6 +876,48 @@ class AuthDatabaseHelper(context: Context) :
                 while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow(COL_FULL_NAME)))
             }
         }
+    }
+
+    private fun getProjectCreatorId(projectId: Long): Long? = readableDatabase.query(
+        TABLE_PROJECTS,
+        arrayOf(PROJECT_CREATED_BY),
+        "$PROJECT_ID = ? AND $PROJECT_IS_DELETED = 0",
+        arrayOf(projectId.toString()),
+        null,
+        null,
+        null,
+        "1"
+    ).use { cursor ->
+        if (cursor.moveToFirst()) cursor.getLong(cursor.getColumnIndexOrThrow(PROJECT_CREATED_BY)) else null
+    }
+
+    private fun countActiveTasksForProject(projectId: Long): Int = readableDatabase.query(
+        TABLE_TASKS,
+        arrayOf("COUNT(*)"),
+        "$TASK_PROJECT_ID = ? AND $TASK_IS_DELETED = 0",
+        arrayOf(projectId.toString()),
+        null,
+        null,
+        null
+    ).use { cursor ->
+        if (cursor.moveToFirst()) cursor.getInt(0) else 0
+    }
+
+    private fun hasTasksAssignedOutsideProjectMembers(projectId: Long, memberIds: Set<Long>): Boolean {
+        if (memberIds.isEmpty()) return countActiveTasksForProject(projectId) > 0
+
+        val placeholders = memberIds.joinToString(",") { "?" }
+        val args = arrayOf(projectId.toString()) + memberIds.map { it.toString() }.toTypedArray()
+        val sql = """
+            SELECT $TASK_ID
+            FROM $TABLE_TASKS
+            WHERE $TASK_PROJECT_ID = ?
+              AND $TASK_IS_DELETED = 0
+              AND $TASK_ASSIGNEE_ID NOT IN ($placeholders)
+            LIMIT 1
+        """.trimIndent()
+
+        return readableDatabase.rawQuery(sql, args).use { it.moveToFirst() }
     }
 
     private fun projectNameExists(name: String, exceptProjectId: Long? = null): Boolean {
