@@ -1,9 +1,13 @@
 package com.ptithcm.myapplication.ui.tasks
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -18,12 +22,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ptithcm.myapplication.data.TaskItem
 import com.ptithcm.myapplication.data.TaskPriority
 import com.ptithcm.myapplication.data.TaskStatus
 import com.ptithcm.myapplication.data.UserAccount
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 @Composable
 internal fun TaskEditorDialog(
@@ -46,6 +54,7 @@ internal fun TaskEditorDialog(
     var priority by remember(editingTask?.id) { mutableStateOf(editingTask?.priority ?: TaskPriority.MEDIUM) }
     var dueDate by remember(editingTask?.id) { mutableStateOf(editingTask?.dueDate.orEmpty()) }
     var errorMessage by remember(editingTask?.id) { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -67,7 +76,8 @@ internal fun TaskEditorDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp),
+                    .padding(top = 4.dp)
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
@@ -108,16 +118,40 @@ internal fun TaskEditorDialog(
                     options = TaskPriority.values().map { it.value to it },
                     onSelect = { priority = it }
                 )
-                OutlinedTextField(
-                    value = dueDate,
-                    onValueChange = {
-                        dueDate = it
-                        errorMessage = null
-                    },
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("Due date (yyyy-mm-dd)") }
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = dueDate,
+                        onValueChange = {
+                            dueDate = it
+                            errorMessage = null
+                        },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        label = { Text("Due date") },
+                        placeholder = { Text("yyyy-MM-dd") }
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            val calendar = parseDateOrToday(dueDate)
+                            DatePickerDialog(
+                                context,
+                                { _, year, month, day ->
+                                    calendar.set(year, month, day)
+                                    dueDate = formatDate(calendar)
+                                    errorMessage = null
+                                },
+                                calendar.get(Calendar.YEAR),
+                                calendar.get(Calendar.MONTH),
+                                calendar.get(Calendar.DAY_OF_MONTH)
+                            ).show()
+                        }
+                    ) {
+                        Text("Pick")
+                    }
+                }
 
                 errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
@@ -204,5 +238,27 @@ private fun validateTask(title: String, projectId: Long, assigneeId: Long, dueDa
     projectId == 0L -> "Select a project"
     assigneeId == 0L -> "Select an assignee"
     dueDate.isBlank() -> "Due date is required"
+    !isValidDate(dueDate.trim()) -> "Due date must be yyyy-MM-dd"
     else -> null
 }
+
+private fun parseDateOrToday(value: String): Calendar {
+    val calendar = Calendar.getInstance()
+    runCatching {
+        SimpleDateFormat(DATE_PATTERN, Locale.US).apply { isLenient = false }.parse(value.trim())
+    }.getOrNull()?.let { calendar.time = it }
+    return calendar
+}
+
+private fun formatDate(calendar: Calendar): String =
+    SimpleDateFormat(DATE_PATTERN, Locale.US).format(calendar.time)
+
+private fun isValidDate(value: String): Boolean =
+    DATE_REGEX.matches(value) && runCatching {
+        val format = SimpleDateFormat(DATE_PATTERN, Locale.US).apply { isLenient = false }
+        val parsed = format.parse(value)
+        parsed != null && format.format(parsed) == value
+    }.getOrDefault(false)
+
+private const val DATE_PATTERN = "yyyy-MM-dd"
+private val DATE_REGEX = Regex("\\d{4}-\\d{2}-\\d{2}")

@@ -243,6 +243,31 @@ internal fun TaskManagerApp(
                         if (error == null) tasksVersion++
                         error
                     },
+                    onListTaskAttachments = { taskId ->
+                        if (database.canUserAccessTask(user, taskId, includeDeleted = true)) {
+                            database.listTaskAttachments(taskId)
+                        } else {
+                            emptyList()
+                        }
+                    },
+                    onAddTaskAttachment = { taskId, displayName, uri ->
+                        if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
+                            "Task not found"
+                        } else if (database.addTaskAttachment(taskId, displayName, uri)) {
+                            null
+                        } else {
+                            "Could not attach file"
+                        }
+                    },
+                    onDeleteTaskAttachment = { taskId, attachmentId ->
+                        if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
+                            "Task not found"
+                        } else if (database.deleteTaskAttachment(taskId, attachmentId)) {
+                            null
+                        } else {
+                            "Attachment not found"
+                        }
+                    },
                     onDeleteTask = { taskId ->
                         if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
                             "Task not found"

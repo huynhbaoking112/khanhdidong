@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ptithcm.myapplication.data.ProjectSummary
+import com.ptithcm.myapplication.data.TaskAttachment
 import com.ptithcm.myapplication.data.TaskItem
 import com.ptithcm.myapplication.data.TaskPriority
 import com.ptithcm.myapplication.data.TaskStatus
@@ -61,6 +62,9 @@ internal fun TaskManagementScreen(
     onCreateTask: (String, String, Long, Long, TaskStatus, TaskPriority, String) -> String?,
     onUpdateTask: (Long, String, String, Long, Long, TaskStatus, TaskPriority, String) -> String?,
     onUpdateTaskDetails: (Long, TaskStatus, Int, String) -> String?,
+    onListTaskAttachments: (Long) -> List<TaskAttachment>,
+    onAddTaskAttachment: (Long, String, String) -> String?,
+    onDeleteTaskAttachment: (Long, Long) -> String?,
     onDeleteTask: (Long) -> String?,
     onRestoreTask: (Long) -> String?
 ) {
@@ -71,6 +75,7 @@ internal fun TaskManagementScreen(
     var taskToRestore by remember { mutableStateOf<TaskItem?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var attachmentsVersion by remember { mutableStateOf(0) }
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedProjectId by remember(projects) { mutableStateOf(projects.firstOrNull()?.id ?: 0L) }
     var searchQuery by remember { mutableStateOf("") }
@@ -187,11 +192,24 @@ internal fun TaskManagementScreen(
             detailTask?.let { task ->
                 TaskDetailDialog(
                     task = task,
+                    attachments = remember(task.id, attachmentsVersion) { onListTaskAttachments(task.id) },
                     canManage = canManage,
                     onDismiss = { detailTask = null },
                     onSave = { status, progress, notes ->
                         val error = onUpdateTaskDetails(task.id, status, progress, notes)
                         message = error ?: "Task detail updated"
+                        error == null
+                    },
+                    onAddAttachment = { displayName, uri ->
+                        val error = onAddTaskAttachment(task.id, displayName, uri)
+                        message = error ?: "Attachment added"
+                        if (error == null) attachmentsVersion++
+                        error == null
+                    },
+                    onDeleteAttachment = { attachmentId ->
+                        val error = onDeleteTaskAttachment(task.id, attachmentId)
+                        message = error ?: "Attachment deleted"
+                        if (error == null) attachmentsVersion++
                         error == null
                     }
                 )

@@ -108,6 +108,14 @@ data class TaskItem(
     val isDeleted: Boolean
 )
 
+data class TaskAttachment(
+    val id: Long,
+    val taskId: Long,
+    val displayName: String,
+    val uri: String,
+    val createdAt: Long
+)
+
 enum class TaskSaveResult {
     SUCCESS,
     INVALID_ASSIGNEE,
@@ -176,6 +184,7 @@ class AuthDatabaseHelper(context: Context) :
         createProjectTables(db)
         seedProject(db)
         createTaskTable(db)
+        createTaskAttachmentTable(db)
         seedTask(db)
     }
 
@@ -195,6 +204,9 @@ class AuthDatabaseHelper(context: Context) :
         if (oldVersion >= 4 && oldVersion < 5) {
             db.execSQL("ALTER TABLE $TABLE_TASKS ADD COLUMN $TASK_PROGRESS INTEGER NOT NULL DEFAULT 0")
             db.execSQL("ALTER TABLE $TABLE_TASKS ADD COLUMN $TASK_NOTES TEXT NOT NULL DEFAULT ''")
+        }
+        if (oldVersion < 6) {
+            createTaskAttachmentTable(db)
         }
     }
 
@@ -716,6 +728,52 @@ class AuthDatabaseHelper(context: Context) :
 
     fun restoreTask(taskId: Long): Boolean = setTaskDeleted(taskId, false)
 
+    fun listTaskAttachments(taskId: Long): List<TaskAttachment> {
+        val cursor = readableDatabase.query(
+            TABLE_TASK_ATTACHMENTS,
+            ATTACHMENT_COLUMNS,
+            "$ATTACHMENT_TASK_ID = ?",
+            arrayOf(taskId.toString()),
+            null,
+            null,
+            "$ATTACHMENT_CREATED_AT DESC"
+        )
+
+        return cursor.use {
+            buildList {
+                while (it.moveToNext()) add(it.toTaskAttachment())
+            }
+        }
+    }
+
+    fun addTaskAttachment(taskId: Long, displayName: String, uri: String): Boolean {
+        val taskExists = readableDatabase.query(
+            TABLE_TASKS,
+            arrayOf(TASK_ID),
+            "$TASK_ID = ? AND $TASK_IS_DELETED = 0",
+            arrayOf(taskId.toString()),
+            null,
+            null,
+            null,
+            "1"
+        ).use { it.moveToFirst() }
+        if (!taskExists) return false
+
+        val values = ContentValues().apply {
+            put(ATTACHMENT_TASK_ID, taskId)
+            put(ATTACHMENT_NAME, displayName.ifBlank { "Attachment" }.trim())
+            put(ATTACHMENT_URI, uri)
+            put(ATTACHMENT_CREATED_AT, System.currentTimeMillis())
+        }
+        return writableDatabase.insert(TABLE_TASK_ATTACHMENTS, null, values) != -1L
+    }
+
+    fun deleteTaskAttachment(taskId: Long, attachmentId: Long): Boolean = writableDatabase.delete(
+        TABLE_TASK_ATTACHMENTS,
+        "$ATTACHMENT_ID = ? AND $ATTACHMENT_TASK_ID = ?",
+        arrayOf(attachmentId.toString(), taskId.toString())
+    ) == 1
+
     private fun setTaskDeleted(taskId: Long, isDeleted: Boolean): Boolean {
         val values = ContentValues().apply {
             put(TASK_IS_DELETED, if (isDeleted) 1 else 0)
@@ -795,6 +853,21 @@ class AuthDatabaseHelper(context: Context) :
                 FOREIGN KEY($TASK_PROJECT_ID) REFERENCES $TABLE_PROJECTS($PROJECT_ID),
                 FOREIGN KEY($TASK_ASSIGNEE_ID) REFERENCES $TABLE_USERS($COL_ID),
                 FOREIGN KEY($TASK_CREATED_BY) REFERENCES $TABLE_USERS($COL_ID)
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun createTaskAttachmentTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_TASK_ATTACHMENTS (
+                $ATTACHMENT_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $ATTACHMENT_TASK_ID INTEGER NOT NULL,
+                $ATTACHMENT_NAME TEXT NOT NULL,
+                $ATTACHMENT_URI TEXT NOT NULL,
+                $ATTACHMENT_CREATED_AT INTEGER NOT NULL,
+                FOREIGN KEY($ATTACHMENT_TASK_ID) REFERENCES $TABLE_TASKS($TASK_ID)
             )
             """.trimIndent()
         )
@@ -1022,6 +1095,14 @@ class AuthDatabaseHelper(context: Context) :
         isDeleted = getInt(getColumnIndexOrThrow(TASK_IS_DELETED)) == 1
     )
 
+    private fun Cursor.toTaskAttachment(): TaskAttachment = TaskAttachment(
+        id = getLong(getColumnIndexOrThrow(ATTACHMENT_ID)),
+        taskId = getLong(getColumnIndexOrThrow(ATTACHMENT_TASK_ID)),
+        displayName = getString(getColumnIndexOrThrow(ATTACHMENT_NAME)),
+        uri = getString(getColumnIndexOrThrow(ATTACHMENT_URI)),
+        createdAt = getLong(getColumnIndexOrThrow(ATTACHMENT_CREATED_AT))
+    )
+
     private fun usernameExists(username: String): Boolean = readableDatabase.query(
         TABLE_USERS,
         arrayOf(COL_ID),
@@ -1050,7 +1131,7 @@ class AuthDatabaseHelper(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "task_manager_auth.db"
-        private const val DATABASE_VERSION = 5
+        private const val DATABASE_VERSION = 6
 
         private const val TABLE_USERS = "users"
         private const val COL_ID = "id"
@@ -1090,6 +1171,13 @@ class AuthDatabaseHelper(context: Context) :
         private const val TASK_IS_DELETED = "is_deleted"
         private const val TASK_CREATED_AT = "created_at"
 
+        private const val TABLE_TASK_ATTACHMENTS = "task_attachments"
+        private const val ATTACHMENT_ID = "id"
+        private const val ATTACHMENT_TASK_ID = "task_id"
+        private const val ATTACHMENT_NAME = "display_name"
+        private const val ATTACHMENT_URI = "uri"
+        private const val ATTACHMENT_CREATED_AT = "created_at"
+
         private val USER_COLUMNS = arrayOf(COL_ID, COL_USERNAME, COL_FULL_NAME, COL_ROLE)
         private val ACCOUNT_COLUMNS = arrayOf(
             COL_ID,
@@ -1097,6 +1185,13 @@ class AuthDatabaseHelper(context: Context) :
             COL_FULL_NAME,
             COL_ROLE,
             COL_IS_ACTIVE
+        )
+        private val ATTACHMENT_COLUMNS = arrayOf(
+            ATTACHMENT_ID,
+            ATTACHMENT_TASK_ID,
+            ATTACHMENT_NAME,
+            ATTACHMENT_URI,
+            ATTACHMENT_CREATED_AT
         )
 
         private fun hashPassword(password: String): String {
