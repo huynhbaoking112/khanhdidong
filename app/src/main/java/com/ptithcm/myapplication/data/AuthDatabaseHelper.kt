@@ -110,6 +110,7 @@ data class TaskItem(
 
 enum class TaskSaveResult {
     SUCCESS,
+    INVALID_ASSIGNEE,
     NOT_FOUND
 }
 
@@ -532,6 +533,53 @@ class AuthDatabaseHelper(context: Context) :
         }
     }
 
+    fun canUserAccessProject(user: UserSession, projectId: Long): Boolean {
+        val whereClause = when (user.role) {
+            UserRole.ADMIN -> "$PROJECT_ID = ? AND $PROJECT_IS_DELETED = 0"
+            UserRole.MANAGER -> "$PROJECT_ID = ? AND $PROJECT_CREATED_BY = ? AND $PROJECT_IS_DELETED = 0"
+            UserRole.MEMBER -> "$PROJECT_ID = ? AND $PROJECT_IS_DELETED = 0 AND $PROJECT_ID IN (SELECT $MEMBER_PROJECT_ID FROM $TABLE_PROJECT_MEMBERS WHERE $MEMBER_USER_ID = ?)"
+        }
+        val args = if (user.role == UserRole.ADMIN) {
+            arrayOf(projectId.toString())
+        } else {
+            arrayOf(projectId.toString(), user.id.toString())
+        }
+
+        return readableDatabase.query(
+            TABLE_PROJECTS,
+            arrayOf(PROJECT_ID),
+            whereClause,
+            args,
+            null,
+            null,
+            null,
+            "1"
+        ).use { it.moveToFirst() }
+    }
+
+    fun canUserAccessTask(user: UserSession, taskId: Long, includeDeleted: Boolean): Boolean {
+        val deletedFilter = if (includeDeleted) "" else "AND t.$TASK_IS_DELETED = 0"
+        val roleFilter = when (user.role) {
+            UserRole.ADMIN -> ""
+            UserRole.MANAGER -> "AND p.$PROJECT_CREATED_BY = ?"
+            UserRole.MEMBER -> "AND t.$TASK_ASSIGNEE_ID = ?"
+        }
+        val args = if (user.role == UserRole.ADMIN) {
+            arrayOf(taskId.toString())
+        } else {
+            arrayOf(taskId.toString(), user.id.toString())
+        }
+        val sql = """
+            SELECT t.$TASK_ID
+            FROM $TABLE_TASKS t
+            JOIN $TABLE_PROJECTS p ON p.$PROJECT_ID = t.$TASK_PROJECT_ID
+            WHERE t.$TASK_ID = ? AND p.$PROJECT_IS_DELETED = 0 $deletedFilter $roleFilter
+            LIMIT 1
+        """.trimIndent()
+
+        return readableDatabase.rawQuery(sql, args).use { it.moveToFirst() }
+    }
+
     fun getDashboardStats(user: UserSession): DashboardStats {
         val projects = listProjectsForUser(user)
         val tasks = listTasksForUser(user, includeDeleted = false)
@@ -592,6 +640,8 @@ class AuthDatabaseHelper(context: Context) :
         dueDate: String,
         createdBy: Long
     ): TaskSaveResult {
+        if (!isProjectMember(projectId, assigneeId)) return TaskSaveResult.INVALID_ASSIGNEE
+
         val values = ContentValues().apply {
             put(TASK_TITLE, title.trim())
             put(TASK_DESCRIPTION, description.trim())
@@ -623,6 +673,8 @@ class AuthDatabaseHelper(context: Context) :
         priority: TaskPriority,
         dueDate: String
     ): TaskSaveResult {
+        if (!isProjectMember(projectId, assigneeId)) return TaskSaveResult.INVALID_ASSIGNEE
+
         val updatedRows = writableDatabase.update(
             TABLE_TASKS,
             ContentValues().apply {
@@ -901,6 +953,21 @@ class AuthDatabaseHelper(context: Context) :
         null
     ).use { cursor ->
         if (cursor.moveToFirst()) cursor.getInt(0) else 0
+    }
+
+    private fun isProjectMember(projectId: Long, userId: Long): Boolean {
+        val sql = """
+            SELECT pm.$MEMBER_USER_ID
+            FROM $TABLE_PROJECT_MEMBERS pm
+            JOIN $TABLE_USERS u ON u.$COL_ID = pm.$MEMBER_USER_ID
+            WHERE pm.$MEMBER_PROJECT_ID = ?
+              AND pm.$MEMBER_USER_ID = ?
+              AND u.$COL_IS_ACTIVE = 1
+              AND u.$COL_IS_DELETED = 0
+            LIMIT 1
+        """.trimIndent()
+
+        return readableDatabase.rawQuery(sql, arrayOf(projectId.toString(), userId.toString())).use { it.moveToFirst() }
     }
 
     private fun hasTasksAssignedOutsideProjectMembers(projectId: Long, memberIds: Set<Long>): Boolean {

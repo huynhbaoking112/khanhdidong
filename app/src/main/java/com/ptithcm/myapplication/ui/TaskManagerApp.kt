@@ -194,45 +194,59 @@ internal fun TaskManagerApp(
                     onIncludeDeletedChange = { includeDeletedTasks = it },
                     onBack = { screen = AppScreen.Home },
                     onCreateTask = { title, description, projectId, assigneeId, status, priority, dueDate ->
-                        val error = database.createTask(
-                            title = title,
-                            description = description,
-                            projectId = projectId,
-                            assigneeId = assigneeId,
-                            status = status,
-                            priority = priority,
-                            dueDate = dueDate,
-                            createdBy = user.id
-                        ).toErrorMessage()
+                        val error = if (!database.canUserAccessProject(user, projectId)) {
+                            "Project not found"
+                        } else {
+                            database.createTask(
+                                title = title,
+                                description = description,
+                                projectId = projectId,
+                                assigneeId = assigneeId,
+                                status = status,
+                                priority = priority,
+                                dueDate = dueDate,
+                                createdBy = user.id
+                            ).toErrorMessage()
+                        }
                         if (error == null) tasksVersion++
                         error
                     },
                     onUpdateTask = { taskId, title, description, projectId, assigneeId, status, priority, dueDate ->
-                        val error = database.updateTask(
-                            taskId = taskId,
-                            title = title,
-                            description = description,
-                            projectId = projectId,
-                            assigneeId = assigneeId,
-                            status = status,
-                            priority = priority,
-                            dueDate = dueDate
-                        ).toErrorMessage()
+                        val error = if (!database.canUserAccessTask(user, taskId, includeDeleted = false) || !database.canUserAccessProject(user, projectId)) {
+                            "Task not found"
+                        } else {
+                            database.updateTask(
+                                taskId = taskId,
+                                title = title,
+                                description = description,
+                                projectId = projectId,
+                                assigneeId = assigneeId,
+                                status = status,
+                                priority = priority,
+                                dueDate = dueDate
+                            ).toErrorMessage()
+                        }
                         if (error == null) tasksVersion++
                         error
                     },
                     onUpdateTaskDetails = { taskId, status, progress, notes ->
-                        val error = database.updateTaskDetails(
-                            taskId = taskId,
-                            status = status,
-                            progress = progress,
-                            notes = notes
-                        ).toErrorMessage()
+                        val error = if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
+                            "Task not found"
+                        } else {
+                            database.updateTaskDetails(
+                                taskId = taskId,
+                                status = status,
+                                progress = progress,
+                                notes = notes
+                            ).toErrorMessage()
+                        }
                         if (error == null) tasksVersion++
                         error
                     },
                     onDeleteTask = { taskId ->
-                        if (database.deleteTask(taskId)) {
+                        if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
+                            "Task not found"
+                        } else if (database.deleteTask(taskId)) {
                             tasksVersion++
                             null
                         } else {
@@ -240,7 +254,9 @@ internal fun TaskManagerApp(
                         }
                     },
                     onRestoreTask = { taskId ->
-                        if (database.restoreTask(taskId)) {
+                        if (!database.canUserAccessTask(user, taskId, includeDeleted = true)) {
+                            "Task not found"
+                        } else if (database.restoreTask(taskId)) {
                             tasksVersion++
                             null
                         } else {
@@ -365,5 +381,6 @@ private fun ProjectSaveResult.toErrorMessage(): String? = when (this) {
 
 private fun TaskSaveResult.toErrorMessage(): String? = when (this) {
     TaskSaveResult.SUCCESS -> null
+    TaskSaveResult.INVALID_ASSIGNEE -> "Assignee must be an active project member"
     TaskSaveResult.NOT_FOUND -> "Task not found"
 }

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -61,6 +62,8 @@ internal fun TaskManagementScreen(
     val canManage = currentUser.role == UserRole.ADMIN || currentUser.role == UserRole.MANAGER
     var editingTask by remember { mutableStateOf<TaskItem?>(null) }
     var detailTask by remember { mutableStateOf<TaskItem?>(null) }
+    var taskToDelete by remember { mutableStateOf<TaskItem?>(null) }
+    var taskToRestore by remember { mutableStateOf<TaskItem?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
@@ -203,16 +206,64 @@ internal fun TaskManagementScreen(
                 message = null
             },
             onDeleteTask = { task ->
-                val error = onDeleteTask(task.id)
-                isError = error != null
-                message = error ?: "Task moved to trash"
-                if (error == null && editingTask?.id == task.id) editingTask = null
-                if (error == null && detailTask?.id == task.id) detailTask = null
+                taskToDelete = task
+                message = null
             },
             onRestoreTask = { task ->
-                val error = onRestoreTask(task.id)
-                isError = error != null
-                message = error ?: "Task restored"
+                taskToRestore = task
+                message = null
+            }
+        )
+    }
+
+    taskToDelete?.let { task ->
+        AlertDialog(
+            onDismissRequest = { taskToDelete = null },
+            title = { Text("Delete task") },
+            text = { Text("Move ${task.title} to trash?") },
+            dismissButton = {
+                OutlinedButton(onClick = { taskToDelete = null }) {
+                    Text("Cancel")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val error = onDeleteTask(task.id)
+                        isError = error != null
+                        message = error ?: "Task moved to trash"
+                        if (error == null && editingTask?.id == task.id) editingTask = null
+                        if (error == null && detailTask?.id == task.id) detailTask = null
+                        taskToDelete = null
+                    }
+                ) {
+                    Text("Delete")
+                }
+            }
+        )
+    }
+
+    taskToRestore?.let { task ->
+        AlertDialog(
+            onDismissRequest = { taskToRestore = null },
+            title = { Text("Restore task") },
+            text = { Text("Restore ${task.title} from trash?") },
+            dismissButton = {
+                OutlinedButton(onClick = { taskToRestore = null }) {
+                    Text("Cancel")
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val error = onRestoreTask(task.id)
+                        isError = error != null
+                        message = error ?: "Task restored"
+                        taskToRestore = null
+                    }
+                ) {
+                    Text("Restore")
+                }
             }
         )
     }
