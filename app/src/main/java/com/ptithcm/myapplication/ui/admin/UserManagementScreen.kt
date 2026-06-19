@@ -12,8 +12,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -41,6 +44,7 @@ internal fun UserManagementScreen(
     onDeleteUser: (Long) -> String?
 ) {
     var editingUser by remember { mutableStateOf<UserAccount?>(null) }
+    var userToDelete by remember { mutableStateOf<UserAccount?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -122,17 +126,39 @@ internal fun UserManagementScreen(
                         val error = onToggleUserActive(user.id, nextActive)
                         message = error ?: if (nextActive) "User unlocked" else "User locked"
                     },
-                    onDeleteUser = { user ->
+                    onDeleteUser = { userToDelete = it }
+                )
+            }
+        }
+    }
+
+    userToDelete?.let { user ->
+        AlertDialog(
+            onDismissRequest = { userToDelete = null },
+            title = { Text("Delete user") },
+            text = { Text("Delete ${user.fullName}? This account will be removed from active use.") },
+            dismissButton = {
+                OutlinedButton(onClick = { userToDelete = null }) {
+                    Text("Cancel")
+                }
+            },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    onClick = {
                         val error = onDeleteUser(user.id)
                         message = error ?: "User deleted"
                         if (error == null && editingUser?.id == user.id) {
                             editingUser = null
                             showEditor = false
                         }
+                        userToDelete = null
                     }
-                )
+                ) {
+                    Text("Delete")
+                }
             }
-        }
+        )
     }
 }
 

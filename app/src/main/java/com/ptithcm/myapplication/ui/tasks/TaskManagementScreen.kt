@@ -65,7 +65,7 @@ internal fun TaskManagementScreen(
     onUpdateTask: (Long, String, String, Long, Long, TaskStatus, TaskPriority, String) -> String?,
     onUpdateTaskDetails: (Long, TaskStatus, Int, String) -> String?,
     onListTaskAttachments: (Long) -> List<TaskAttachment>,
-    onAddTaskAttachment: (Long, String, String) -> String?,
+    onAddTaskAttachment: (Long, String, String, String, Long) -> String?,
     onDeleteTaskAttachment: (Long, Long) -> String?,
     onListTaskComments: (Long) -> List<TaskComment>,
     onAddTaskComment: (Long, String) -> String?,
@@ -210,8 +210,8 @@ internal fun TaskManagementScreen(
                         if (error == null) historyVersion++
                         error == null
                     },
-                    onAddAttachment = { displayName, uri ->
-                        val error = onAddTaskAttachment(task.id, displayName, uri)
+                    onAddAttachment = { displayName, uri, mimeType, sizeBytes ->
+                        val error = onAddTaskAttachment(task.id, displayName, uri, mimeType, sizeBytes)
                         message = error ?: "Attachment added"
                         if (error == null) attachmentsVersion++
                         error == null

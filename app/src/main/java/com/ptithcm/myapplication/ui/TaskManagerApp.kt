@@ -255,10 +255,10 @@ internal fun TaskManagerApp(
                             emptyList()
                         }
                     },
-                    onAddTaskAttachment = { taskId, displayName, uri ->
+                    onAddTaskAttachment = { taskId, displayName, uri, mimeType, sizeBytes ->
                         if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
                             "Task not found"
-                        } else if (database.addTaskAttachment(taskId, displayName, uri)) {
+                        } else if (database.addTaskAttachment(taskId, displayName, uri, mimeType, sizeBytes)) {
                             null
                         } else {
                             "Could not attach file"
@@ -341,6 +341,12 @@ internal fun TaskManagerApp(
                 screen == AppScreen.Reports -> ReportsScreen(
                     reportData = remember(projectsVersion, tasksVersion, user.id, user.role) {
                         database.getReportData(user)
+                    },
+                    projects = remember(projectsVersion, user.id, user.role) {
+                        database.listProjectsForUser(user)
+                    },
+                    tasks = remember(tasksVersion, user.id, user.role) {
+                        database.listTasksForUser(user, includeDeleted = false)
                     },
                     onBack = { screen = AppScreen.Home }
                 )

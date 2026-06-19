@@ -23,8 +23,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -41,36 +49,55 @@ internal fun SettingsScreen(
     onChangePassword: () -> Unit,
     onLogout: () -> Unit
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        OutlinedButton(onClick = onBack) {
-            Icon(Icons.Filled.ArrowBack, contentDescription = null)
-            Text("Back to profile")
+    var message by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            message = null
         }
+    }
 
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "${user.fullName} - ${user.role.value}",
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(innerPadding)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            OutlinedButton(onClick = onBack) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = null)
+                Text("Back to profile")
+            }
 
-        ThemeSettingsCard(
-            themeMode = themeMode,
-            onThemeModeChange = onThemeModeChange
-        )
-        AccountSettingsCard(
-            onChangePassword = onChangePassword,
-            onLogout = onLogout
-        )
+            Text(
+                text = "Settings",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "${user.fullName} - ${user.role.value}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            ThemeSettingsCard(
+                themeMode = themeMode,
+                onThemeModeChange = {
+                    onThemeModeChange(it)
+                    message = "Theme changed to ${it.value}"
+                }
+            )
+            AccountSettingsCard(
+                onChangePassword = onChangePassword,
+                onLogout = onLogout
+            )
+        }
     }
 }
 

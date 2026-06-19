@@ -113,6 +113,8 @@ data class TaskAttachment(
     val taskId: Long,
     val displayName: String,
     val uri: String,
+    val mimeType: String,
+    val sizeBytes: Long,
     val createdAt: Long
 )
 
@@ -227,6 +229,10 @@ class AuthDatabaseHelper(context: Context) :
         }
         if (oldVersion < 7) {
             createTaskCollaborationTables(db)
+        }
+        if (oldVersion >= 6 && oldVersion < 8) {
+            db.execSQL("ALTER TABLE $TABLE_TASK_ATTACHMENTS ADD COLUMN $ATTACHMENT_MIME_TYPE TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE $TABLE_TASK_ATTACHMENTS ADD COLUMN $ATTACHMENT_SIZE_BYTES INTEGER NOT NULL DEFAULT 0")
         }
     }
 
@@ -795,7 +801,7 @@ class AuthDatabaseHelper(context: Context) :
         }
     }
 
-    fun addTaskAttachment(taskId: Long, displayName: String, uri: String): Boolean {
+    fun addTaskAttachment(taskId: Long, displayName: String, uri: String, mimeType: String, sizeBytes: Long): Boolean {
         val taskExists = readableDatabase.query(
             TABLE_TASKS,
             arrayOf(TASK_ID),
@@ -812,6 +818,8 @@ class AuthDatabaseHelper(context: Context) :
             put(ATTACHMENT_TASK_ID, taskId)
             put(ATTACHMENT_NAME, displayName.ifBlank { "Attachment" }.trim())
             put(ATTACHMENT_URI, uri)
+            put(ATTACHMENT_MIME_TYPE, mimeType)
+            put(ATTACHMENT_SIZE_BYTES, sizeBytes.coerceAtLeast(0L))
             put(ATTACHMENT_CREATED_AT, System.currentTimeMillis())
         }
         return writableDatabase.insert(TABLE_TASK_ATTACHMENTS, null, values) != -1L
@@ -980,6 +988,8 @@ class AuthDatabaseHelper(context: Context) :
                 $ATTACHMENT_TASK_ID INTEGER NOT NULL,
                 $ATTACHMENT_NAME TEXT NOT NULL,
                 $ATTACHMENT_URI TEXT NOT NULL,
+                $ATTACHMENT_MIME_TYPE TEXT NOT NULL DEFAULT '',
+                $ATTACHMENT_SIZE_BYTES INTEGER NOT NULL DEFAULT 0,
                 $ATTACHMENT_CREATED_AT INTEGER NOT NULL,
                 FOREIGN KEY($ATTACHMENT_TASK_ID) REFERENCES $TABLE_TASKS($TASK_ID)
             )
@@ -1254,6 +1264,8 @@ class AuthDatabaseHelper(context: Context) :
         taskId = getLong(getColumnIndexOrThrow(ATTACHMENT_TASK_ID)),
         displayName = getString(getColumnIndexOrThrow(ATTACHMENT_NAME)),
         uri = getString(getColumnIndexOrThrow(ATTACHMENT_URI)),
+        mimeType = getString(getColumnIndexOrThrow(ATTACHMENT_MIME_TYPE)),
+        sizeBytes = getLong(getColumnIndexOrThrow(ATTACHMENT_SIZE_BYTES)),
         createdAt = getLong(getColumnIndexOrThrow(ATTACHMENT_CREATED_AT))
     )
 
@@ -1301,7 +1313,7 @@ class AuthDatabaseHelper(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "task_manager_auth.db"
-        private const val DATABASE_VERSION = 7
+        private const val DATABASE_VERSION = 8
 
         private const val TABLE_USERS = "users"
         private const val COL_ID = "id"
@@ -1346,6 +1358,8 @@ class AuthDatabaseHelper(context: Context) :
         private const val ATTACHMENT_TASK_ID = "task_id"
         private const val ATTACHMENT_NAME = "display_name"
         private const val ATTACHMENT_URI = "uri"
+        private const val ATTACHMENT_MIME_TYPE = "mime_type"
+        private const val ATTACHMENT_SIZE_BYTES = "size_bytes"
         private const val ATTACHMENT_CREATED_AT = "created_at"
 
         private const val TABLE_TASK_COMMENTS = "task_comments"
@@ -1375,6 +1389,8 @@ class AuthDatabaseHelper(context: Context) :
             ATTACHMENT_TASK_ID,
             ATTACHMENT_NAME,
             ATTACHMENT_URI,
+            ATTACHMENT_MIME_TYPE,
+            ATTACHMENT_SIZE_BYTES,
             ATTACHMENT_CREATED_AT
         )
 

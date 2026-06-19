@@ -24,9 +24,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,46 +55,62 @@ internal fun ProfileScreen(
     onUpdateProfile: (String) -> String?
 ) {
     val completedTasks = assignedTasks.filter { it.status == TaskStatus.DONE }
+    var message by remember(user.id) { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        OutlinedButton(onClick = onBack) {
-            Text("Back to home")
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            message = null
         }
+    }
 
-        ProfileHeaderCard(user)
-        ProfileEditorCard(
-            user = user,
-            onUpdateProfile = onUpdateProfile
-        )
-        Button(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = onOpenSettings
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(innerPadding)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Icon(Icons.Filled.Settings, contentDescription = null)
-            Text("Settings")
+            OutlinedButton(onClick = onBack) {
+                Text("Back to home")
+            }
+
+            ProfileHeaderCard(user)
+            ProfileEditorCard(
+                user = user,
+                onUpdateProfile = onUpdateProfile,
+                onMessage = { message = it }
+            )
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onOpenSettings
+            ) {
+                Icon(Icons.Filled.Settings, contentDescription = null)
+                Text("Settings")
+            }
+            ProfileStatsCard(
+                projectCount = projects.size,
+                assignedCount = assignedTasks.size,
+                completedCount = completedTasks.size
+            )
+            ProjectOverviewCard(projects)
+            TaskOverviewCard(
+                title = "Assigned tasks",
+                tasks = assignedTasks,
+                emptyText = "No assigned tasks yet."
+            )
+            TaskOverviewCard(
+                title = "Completed tasks",
+                tasks = completedTasks,
+                emptyText = "No completed tasks yet."
+            )
         }
-        ProfileStatsCard(
-            projectCount = projects.size,
-            assignedCount = assignedTasks.size,
-            completedCount = completedTasks.size
-        )
-        ProjectOverviewCard(projects)
-        TaskOverviewCard(
-            title = "Assigned tasks",
-            tasks = assignedTasks,
-            emptyText = "No assigned tasks."
-        )
-        TaskOverviewCard(
-            title = "Completed tasks",
-            tasks = completedTasks,
-            emptyText = "No completed tasks yet."
-        )
     }
 }
 
@@ -137,10 +157,10 @@ private fun ProfileHeaderCard(user: UserSession) {
 @Composable
 private fun ProfileEditorCard(
     user: UserSession,
-    onUpdateProfile: (String) -> String?
+    onUpdateProfile: (String) -> String?,
+    onMessage: (String) -> Unit
 ) {
     var fullName by remember(user.id) { mutableStateOf(user.fullName) }
-    var message by remember(user.id) { mutableStateOf<String?>(null) }
     val hasChanged = fullName.trim() != user.fullName
 
     Card(
@@ -161,10 +181,7 @@ private fun ProfileEditorCard(
             )
             OutlinedTextField(
                 value = fullName,
-                onValueChange = {
-                    fullName = it
-                    message = null
-                },
+                onValueChange = { fullName = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 label = { Text("Full name") }
@@ -178,7 +195,6 @@ private fun ProfileEditorCard(
                     enabled = hasChanged,
                     onClick = {
                         fullName = user.fullName
-                        message = null
                     }
                 ) {
                     Text("Reset")
@@ -187,32 +203,22 @@ private fun ProfileEditorCard(
                     modifier = Modifier.weight(1f),
                     enabled = hasChanged,
                     onClick = {
-                        message = if (fullName.isBlank()) {
-                            "Full name is required"
+                        if (fullName.isBlank()) {
+                            onMessage("Full name is required")
                         } else {
                             val cleanFullName = fullName.trim()
                             val error = onUpdateProfile(cleanFullName)
                             if (error == null) {
                                 fullName = cleanFullName
-                                "Profile updated"
+                                onMessage("Profile updated")
                             } else {
-                                error
+                                onMessage(error)
                             }
                         }
                     }
                 ) {
                     Text("Save")
                 }
-            }
-            message?.let {
-                Text(
-                    text = it,
-                    color = if (it == "Profile updated") {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    }
-                )
             }
         }
     }
@@ -300,7 +306,7 @@ private fun ProjectOverviewCard(projects: List<ProjectSummary>) {
                 fontWeight = FontWeight.SemiBold
             )
             if (projects.isEmpty()) {
-                Text("No projects joined.")
+                EmptyProfileState("No projects joined", "Projects you manage or participate in will appear here.")
             } else {
                 projects.forEach { project ->
                     InfoRow(
@@ -335,7 +341,7 @@ private fun TaskOverviewCard(
                 fontWeight = FontWeight.SemiBold
             )
             if (tasks.isEmpty()) {
-                Text(emptyText)
+                EmptyProfileState(emptyText, "Task activity will appear here once work is assigned.")
             } else {
                 tasks.forEach { task ->
                     InfoRow(
@@ -344,6 +350,30 @@ private fun TaskOverviewCard(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun EmptyProfileState(
+    title: String,
+    subtitle: String
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
