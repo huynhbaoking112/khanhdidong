@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.ManageAccounts
@@ -30,6 +31,7 @@ import com.ptithcm.myapplication.ui.admin.UserManagementScreen
 import com.ptithcm.myapplication.ui.auth.ChangePasswordScreen
 import com.ptithcm.myapplication.ui.auth.LoginScreen
 import com.ptithcm.myapplication.ui.home.HomeScreen
+import com.ptithcm.myapplication.ui.profile.ProfileScreen
 import com.ptithcm.myapplication.ui.projects.ProjectManagementScreen
 import com.ptithcm.myapplication.ui.tasks.TaskManagementScreen
 
@@ -247,6 +249,25 @@ internal fun TaskManagerApp(
                     }
                 )
 
+                screen == AppScreen.Profile -> ProfileScreen(
+                    user = user,
+                    projects = remember(projectsVersion, user.id, user.role) {
+                        database.listProjectsForUser(user)
+                    },
+                    assignedTasks = remember(tasksVersion, user.id) {
+                        database.listTasksAssignedToUser(user.id)
+                    },
+                    onBack = { screen = AppScreen.Home },
+                    onUpdateProfile = { fullName ->
+                        val error = database.updateProfile(user.id, fullName).toErrorMessage()
+                        if (error == null) {
+                            usersVersion++
+                            currentUser = database.getUserById(user.id)
+                        }
+                        error
+                    }
+                )
+
                 else -> HomeScreen(
                     user = user,
                     dashboardStats = remember(projectsVersion, tasksVersion, user.id, user.role) {
@@ -292,6 +313,12 @@ private fun AppBottomMenu(
             icon = { Icon(Icons.Filled.Assignment, contentDescription = null) },
             label = { Text("Tasks") }
         )
+        NavigationBarItem(
+            selected = selectedScreen == AppScreen.Profile,
+            onClick = { onSelect(AppScreen.Profile) },
+            icon = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
+            label = { Text("Profile") }
+        )
         if (role == UserRole.ADMIN) {
             NavigationBarItem(
                 selected = selectedScreen == AppScreen.UserManagement,
@@ -309,7 +336,8 @@ private enum class AppScreen {
     ChangePassword,
     UserManagement,
     ProjectManagement,
-    TaskManagement
+    TaskManagement,
+    Profile
 }
 
 private fun UserSaveResult.toErrorMessage(): String? = when (this) {

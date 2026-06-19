@@ -289,6 +289,20 @@ class AuthDatabaseHelper(context: Context) :
         return if (updatedRows == 1) UserSaveResult.SUCCESS else UserSaveResult.NOT_FOUND
     }
 
+    fun updateProfile(userId: Long, fullName: String): UserSaveResult {
+        val values = ContentValues().apply {
+            put(COL_FULL_NAME, fullName.trim())
+        }
+
+        val updatedRows = writableDatabase.update(
+            TABLE_USERS,
+            values,
+            "$COL_ID = ? AND $COL_IS_ACTIVE = 1 AND $COL_IS_DELETED = 0",
+            arrayOf(userId.toString())
+        )
+        return if (updatedRows == 1) UserSaveResult.SUCCESS else UserSaveResult.NOT_FOUND
+    }
+
     fun setUserActive(userId: Long, isActive: Boolean): Boolean {
         val values = ContentValues().apply {
             put(COL_IS_ACTIVE, if (isActive) 1 else 0)
@@ -454,6 +468,26 @@ class AuthDatabaseHelper(context: Context) :
         """.trimIndent()
 
         return readableDatabase.rawQuery(sql, args).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.toTaskItem())
+            }
+        }
+    }
+
+    fun listTasksAssignedToUser(userId: Long): List<TaskItem> {
+        val sql = """
+            SELECT t.$TASK_ID, t.$TASK_TITLE, t.$TASK_DESCRIPTION, t.$TASK_PROJECT_ID,
+                   p.$PROJECT_NAME, t.$TASK_ASSIGNEE_ID, u.$COL_FULL_NAME AS assignee_name,
+                   t.$TASK_STATUS, t.$TASK_PRIORITY, t.$TASK_DUE_DATE, t.$TASK_PROGRESS,
+                   t.$TASK_NOTES, t.$TASK_IS_DELETED
+            FROM $TABLE_TASKS t
+            JOIN $TABLE_PROJECTS p ON p.$PROJECT_ID = t.$TASK_PROJECT_ID
+            JOIN $TABLE_USERS u ON u.$COL_ID = t.$TASK_ASSIGNEE_ID
+            WHERE p.$PROJECT_IS_DELETED = 0 AND t.$TASK_IS_DELETED = 0 AND t.$TASK_ASSIGNEE_ID = ?
+            ORDER BY t.$TASK_DUE_DATE ASC, t.$TASK_CREATED_AT DESC
+        """.trimIndent()
+
+        return readableDatabase.rawQuery(sql, arrayOf(userId.toString())).use { cursor ->
             buildList {
                 while (cursor.moveToNext()) add(cursor.toTaskItem())
             }
