@@ -1,0 +1,166 @@
+package com.ptithcm.myapplication.ui.admin
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.ptithcm.myapplication.data.UserAccount
+import com.ptithcm.myapplication.data.UserRole
+
+@Composable
+internal fun UserManagementScreen(
+    users: List<UserAccount>,
+    currentAdminId: Long,
+    onBack: () -> Unit,
+    onCreateUser: (String, String, String, UserRole) -> String?,
+    onUpdateUser: (Long, String, UserRole) -> String?,
+    onToggleUserActive: (Long, Boolean) -> String?,
+    onDeleteUser: (Long) -> String?
+) {
+    var editingUser by remember { mutableStateOf<UserAccount?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var isError by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        UserManagementHeader(onBack)
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            message?.let {
+                Text(
+                    text = it,
+                    color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                )
+            }
+
+            UserEditorCard(
+                editingUser = editingUser,
+                currentAdminId = currentAdminId,
+                onCancelEdit = {
+                    editingUser = null
+                    message = null
+                },
+                onCreateUser = { username, password, fullName, role ->
+                    val error = onCreateUser(username, password, fullName, role)
+                    isError = error != null
+                    message = error ?: "User created successfully"
+                    error == null
+                },
+                onUpdateUser = { userId, fullName, role ->
+                    val error = onUpdateUser(userId, fullName, role)
+                    isError = error != null
+                    message = error ?: "User updated successfully"
+                    if (error == null) editingUser = null
+                    error == null
+                }
+            )
+
+            UserListCard(
+                users = users,
+                currentAdminId = currentAdminId,
+                onEditUser = {
+                    editingUser = it
+                    message = null
+                },
+                onToggleUserActive = { user, nextActive ->
+                    val error = onToggleUserActive(user.id, nextActive)
+                    isError = error != null
+                    message = error ?: if (nextActive) "User unlocked" else "User locked"
+                },
+                onDeleteUser = { user ->
+                    val error = onDeleteUser(user.id)
+                    isError = error != null
+                    message = error ?: "User deleted"
+                    if (error == null && editingUser?.id == user.id) editingUser = null
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun UserManagementHeader(onBack: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedButton(onClick = onBack) {
+            Icon(Icons.Filled.ArrowBack, contentDescription = null)
+            Text("Back to home")
+        }
+
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.secondary
+                            )
+                        )
+                    )
+                    .padding(20.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ManageAccounts,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Column {
+                        Text(
+                            text = "User management",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Text(
+                            text = "Create, edit, lock, and delete accounts.",
+                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.86f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
