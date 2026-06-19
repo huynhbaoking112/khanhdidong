@@ -35,6 +35,7 @@ internal fun TaskListCard(
     canManage: Boolean,
     includeDeleted: Boolean,
     onIncludeDeletedChange: (Boolean) -> Unit,
+    onViewTask: (TaskItem) -> Unit,
     onEditTask: (TaskItem) -> Unit,
     onDeleteTask: (TaskItem) -> Unit,
     onRestoreTask: (TaskItem) -> Unit
@@ -72,6 +73,7 @@ internal fun TaskListCard(
                     TaskRow(
                         task = task,
                         canManage = canManage,
+                        onViewTask = onViewTask,
                         onEditTask = onEditTask,
                         onDeleteTask = onDeleteTask,
                         onRestoreTask = onRestoreTask
@@ -86,6 +88,7 @@ internal fun TaskListCard(
 private fun TaskRow(
     task: TaskItem,
     canManage: Boolean,
+    onViewTask: (TaskItem) -> Unit,
     onEditTask: (TaskItem) -> Unit,
     onDeleteTask: (TaskItem) -> Unit,
     onRestoreTask: (TaskItem) -> Unit
@@ -119,11 +122,18 @@ private fun TaskRow(
                 text = "Priority: ${task.priority.value} - Due: ${task.dueDate}" + if (task.isDeleted) " - Deleted" else "",
                 color = task.priority.color()
             )
-            if (canManage) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Text("Progress: ${task.progress}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = { onViewTask(task) }
                 ) {
+                    Text("Details")
+                }
+                if (canManage) {
                     OutlinedButton(
                         modifier = Modifier.weight(1f),
                         enabled = !task.isDeleted,
@@ -132,8 +142,15 @@ private fun TaskRow(
                         Icon(Icons.Filled.Edit, contentDescription = null, modifier = Modifier.size(17.dp))
                         Text("Edit")
                     }
+                }
+            }
+            if (canManage) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Button(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
                         onClick = { if (task.isDeleted) onRestoreTask(task) else onDeleteTask(task) }
                     ) {
                         Icon(

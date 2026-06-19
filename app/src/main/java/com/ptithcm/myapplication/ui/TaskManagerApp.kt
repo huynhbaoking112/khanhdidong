@@ -219,6 +219,16 @@ internal fun TaskManagerApp(
                         if (error == null) tasksVersion++
                         error
                     },
+                    onUpdateTaskDetails = { taskId, status, progress, notes ->
+                        val error = database.updateTaskDetails(
+                            taskId = taskId,
+                            status = status,
+                            progress = progress,
+                            notes = notes
+                        ).toErrorMessage()
+                        if (error == null) tasksVersion++
+                        error
+                    },
                     onDeleteTask = { taskId ->
                         if (database.deleteTask(taskId)) {
                             tasksVersion++

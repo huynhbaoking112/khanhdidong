@@ -101,6 +101,8 @@ data class TaskItem(
     val status: TaskStatus,
     val priority: TaskPriority,
     val dueDate: String,
+    val progress: Int,
+    val notes: String,
     val isDeleted: Boolean
 )
 
@@ -159,6 +161,10 @@ class AuthDatabaseHelper(context: Context) :
         if (oldVersion < 4) {
             createTaskTable(db)
             seedTask(db)
+        }
+        if (oldVersion >= 4 && oldVersion < 5) {
+            db.execSQL("ALTER TABLE $TABLE_TASKS ADD COLUMN $TASK_PROGRESS INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE $TABLE_TASKS ADD COLUMN $TASK_NOTES TEXT NOT NULL DEFAULT ''")
         }
     }
 
@@ -438,7 +444,8 @@ class AuthDatabaseHelper(context: Context) :
         val sql = """
             SELECT t.$TASK_ID, t.$TASK_TITLE, t.$TASK_DESCRIPTION, t.$TASK_PROJECT_ID,
                    p.$PROJECT_NAME, t.$TASK_ASSIGNEE_ID, u.$COL_FULL_NAME AS assignee_name,
-                   t.$TASK_STATUS, t.$TASK_PRIORITY, t.$TASK_DUE_DATE, t.$TASK_IS_DELETED
+                   t.$TASK_STATUS, t.$TASK_PRIORITY, t.$TASK_DUE_DATE, t.$TASK_PROGRESS,
+                   t.$TASK_NOTES, t.$TASK_IS_DELETED
             FROM $TABLE_TASKS t
             JOIN $TABLE_PROJECTS p ON p.$PROJECT_ID = t.$TASK_PROJECT_ID
             JOIN $TABLE_USERS u ON u.$COL_ID = t.$TASK_ASSIGNEE_ID
@@ -486,6 +493,8 @@ class AuthDatabaseHelper(context: Context) :
             put(TASK_STATUS, status.value)
             put(TASK_PRIORITY, priority.value)
             put(TASK_DUE_DATE, dueDate.trim())
+            put(TASK_PROGRESS, if (status == TaskStatus.DONE) 100 else 0)
+            put(TASK_NOTES, "")
             put(TASK_CREATED_BY, createdBy)
             put(TASK_IS_DELETED, 0)
             put(TASK_CREATED_AT, System.currentTimeMillis())
@@ -519,6 +528,26 @@ class AuthDatabaseHelper(context: Context) :
                 put(TASK_DUE_DATE, dueDate.trim())
             },
             "$TASK_ID = ?",
+            arrayOf(taskId.toString())
+        )
+        return if (updatedRows == 1) TaskSaveResult.SUCCESS else TaskSaveResult.NOT_FOUND
+    }
+
+    fun updateTaskDetails(
+        taskId: Long,
+        status: TaskStatus,
+        progress: Int,
+        notes: String
+    ): TaskSaveResult {
+        val safeProgress = progress.coerceIn(0, 100)
+        val updatedRows = writableDatabase.update(
+            TABLE_TASKS,
+            ContentValues().apply {
+                put(TASK_STATUS, status.value)
+                put(TASK_PROGRESS, safeProgress)
+                put(TASK_NOTES, notes.trim())
+            },
+            "$TASK_ID = ? AND $TASK_IS_DELETED = 0",
             arrayOf(taskId.toString())
         )
         return if (updatedRows == 1) TaskSaveResult.SUCCESS else TaskSaveResult.NOT_FOUND
@@ -599,6 +628,8 @@ class AuthDatabaseHelper(context: Context) :
                 $TASK_STATUS TEXT NOT NULL CHECK($TASK_STATUS IN ('Todo', 'Doing', 'Done', 'Overdue')),
                 $TASK_PRIORITY TEXT NOT NULL CHECK($TASK_PRIORITY IN ('Low', 'Medium', 'High')),
                 $TASK_DUE_DATE TEXT NOT NULL,
+                $TASK_PROGRESS INTEGER NOT NULL DEFAULT 0,
+                $TASK_NOTES TEXT NOT NULL DEFAULT '',
                 $TASK_CREATED_BY INTEGER NOT NULL,
                 $TASK_IS_DELETED INTEGER NOT NULL DEFAULT 0,
                 $TASK_CREATED_AT INTEGER NOT NULL,
@@ -677,6 +708,8 @@ class AuthDatabaseHelper(context: Context) :
                 put(TASK_STATUS, TaskStatus.TODO.value)
                 put(TASK_PRIORITY, TaskPriority.HIGH.value)
                 put(TASK_DUE_DATE, "2026-07-01")
+                put(TASK_PROGRESS, 0)
+                put(TASK_NOTES, "Initial task for the mobile project.")
                 put(TASK_CREATED_BY, managerId)
                 put(TASK_IS_DELETED, 0)
                 put(TASK_CREATED_AT, System.currentTimeMillis())
@@ -768,6 +801,8 @@ class AuthDatabaseHelper(context: Context) :
         status = TaskStatus.fromValue(getString(getColumnIndexOrThrow(TASK_STATUS))),
         priority = TaskPriority.fromValue(getString(getColumnIndexOrThrow(TASK_PRIORITY))),
         dueDate = getString(getColumnIndexOrThrow(TASK_DUE_DATE)),
+        progress = getInt(getColumnIndexOrThrow(TASK_PROGRESS)),
+        notes = getString(getColumnIndexOrThrow(TASK_NOTES)),
         isDeleted = getInt(getColumnIndexOrThrow(TASK_IS_DELETED)) == 1
     )
 
@@ -799,7 +834,7 @@ class AuthDatabaseHelper(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "task_manager_auth.db"
-        private const val DATABASE_VERSION = 4
+        private const val DATABASE_VERSION = 5
 
         private const val TABLE_USERS = "users"
         private const val COL_ID = "id"
@@ -833,6 +868,8 @@ class AuthDatabaseHelper(context: Context) :
         private const val TASK_STATUS = "status"
         private const val TASK_PRIORITY = "priority"
         private const val TASK_DUE_DATE = "due_date"
+        private const val TASK_PROGRESS = "progress"
+        private const val TASK_NOTES = "notes"
         private const val TASK_CREATED_BY = "created_by"
         private const val TASK_IS_DELETED = "is_deleted"
         private const val TASK_CREATED_AT = "created_at"

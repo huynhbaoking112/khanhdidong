@@ -2,6 +2,7 @@ package com.ptithcm.myapplication.ui.tasks
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -52,11 +54,13 @@ internal fun TaskManagementScreen(
     onBack: () -> Unit,
     onCreateTask: (String, String, Long, Long, TaskStatus, TaskPriority, String) -> String?,
     onUpdateTask: (Long, String, String, Long, Long, TaskStatus, TaskPriority, String) -> String?,
+    onUpdateTaskDetails: (Long, TaskStatus, Int, String) -> String?,
     onDeleteTask: (Long) -> String?,
     onRestoreTask: (Long) -> String?
 ) {
     val canManage = currentUser.role == UserRole.ADMIN || currentUser.role == UserRole.MANAGER
     var editingTask by remember { mutableStateOf<TaskItem?>(null) }
+    var detailTask by remember { mutableStateOf<TaskItem?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
@@ -169,12 +173,30 @@ internal fun TaskManagementScreen(
             )
         }
 
+        detailTask?.let { task ->
+            TaskDetailDialog(
+                task = task,
+                canManage = canManage,
+                onDismiss = { detailTask = null },
+                onSave = { status, progress, notes ->
+                    val error = onUpdateTaskDetails(task.id, status, progress, notes)
+                    isError = error != null
+                    message = error ?: "Task detail updated"
+                    error == null
+                }
+            )
+        }
+
         TaskListCard(
             projectName = selectedProject?.name ?: "No project",
             tasks = projectTasks,
             canManage = canManage,
             includeDeleted = includeDeleted,
             onIncludeDeletedChange = onIncludeDeletedChange,
+            onViewTask = {
+                detailTask = it
+                message = null
+            },
             onEditTask = {
                 editingTask = it
                 showEditor = true
@@ -185,6 +207,7 @@ internal fun TaskManagementScreen(
                 isError = error != null
                 message = error ?: "Task moved to trash"
                 if (error == null && editingTask?.id == task.id) editingTask = null
+                if (error == null && detailTask?.id == task.id) detailTask = null
             },
             onRestoreTask = { task ->
                 val error = onRestoreTask(task.id)
@@ -207,12 +230,12 @@ private fun TaskFilterCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             OutlinedTextField(
                 value = searchQuery,
@@ -225,21 +248,32 @@ private fun TaskFilterCard(
                 label = { Text("Search task") }
             )
 
-            EnumFilterButton(
-                label = "Status",
-                value = statusFilter?.value ?: "All status",
-                options = TaskStatus.values().map { it.value to it },
-                onSelect = onStatusFilterChange
-            )
-            EnumFilterButton(
-                label = "Priority",
-                value = priorityFilter?.value ?: "All priority",
-                options = TaskPriority.values().map { it.value to it },
-                onSelect = onPriorityFilterChange
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                EnumFilterButton(
+                    modifier = Modifier.weight(1f),
+                    label = "Status",
+                    value = statusFilter?.value ?: "All status",
+                    selected = statusFilter != null,
+                    options = TaskStatus.values().map { it.value to it },
+                    onSelect = onStatusFilterChange
+                )
+                EnumFilterButton(
+                    modifier = Modifier.weight(1f),
+                    label = "Priority",
+                    value = priorityFilter?.value ?: "All priority",
+                    selected = priorityFilter != null,
+                    options = TaskPriority.values().map { it.value to it },
+                    onSelect = onPriorityFilterChange
+                )
+            }
 
-            TextButton(onClick = onClearFilters) {
-                Text("Clear filters")
+            if (searchQuery.isNotBlank() || statusFilter != null || priorityFilter != null) {
+                TextButton(onClick = onClearFilters) {
+                    Text("Clear filters")
+                }
             }
         }
     }
@@ -247,24 +281,25 @@ private fun TaskFilterCard(
 
 @Composable
 private fun <T> EnumFilterButton(
+    modifier: Modifier,
     label: String,
     value: String,
+    selected: Boolean,
     options: List<Pair<String, T>>,
     onSelect: (T?) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            onClick = { expanded = true }
-        ) {
-            Text(value)
-        }
+    Column(modifier = modifier) {
+        FilterChip(
+            selected = selected,
+            onClick = { expanded = true },
+            label = { Text(value) },
+            modifier = Modifier.fillMaxWidth()
+        )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
-                text = { Text("All") },
+                text = { Text("All $label") },
                 onClick = {
                     onSelect(null)
                     expanded = false
