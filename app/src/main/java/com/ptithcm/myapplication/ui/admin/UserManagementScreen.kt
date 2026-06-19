@@ -2,12 +2,17 @@ package com.ptithcm.myapplication.ui.admin
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -33,6 +38,7 @@ internal fun UserManagementScreen(
     onDeleteUser: (Long) -> String?
 ) {
     var editingUser by remember { mutableStateOf<UserAccount?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
 
@@ -57,33 +63,53 @@ internal fun UserManagementScreen(
                 )
             }
 
-            UserEditorCard(
-                editingUser = editingUser,
-                currentAdminId = currentAdminId,
-                onCancelEdit = {
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
                     editingUser = null
+                    showEditor = true
                     message = null
-                },
-                onCreateUser = { username, password, fullName, role ->
-                    val error = onCreateUser(username, password, fullName, role)
-                    isError = error != null
-                    message = error ?: "User created successfully"
-                    error == null
-                },
-                onUpdateUser = { userId, fullName, role ->
-                    val error = onUpdateUser(userId, fullName, role)
-                    isError = error != null
-                    message = error ?: "User updated successfully"
-                    if (error == null) editingUser = null
-                    error == null
                 }
-            )
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Create user")
+            }
+
+            if (showEditor) {
+                UserEditorDialog(
+                    editingUser = editingUser,
+                    currentAdminId = currentAdminId,
+                    onDismiss = {
+                        showEditor = false
+                        editingUser = null
+                    },
+                    onCancelEdit = {
+                        showEditor = false
+                        editingUser = null
+                        message = null
+                    },
+                    onCreateUser = { username, password, fullName, role ->
+                        val error = onCreateUser(username, password, fullName, role)
+                        isError = error != null
+                        message = error ?: "User created successfully"
+                        error == null
+                    },
+                    onUpdateUser = { userId, fullName, role ->
+                        val error = onUpdateUser(userId, fullName, role)
+                        isError = error != null
+                        message = error ?: "User updated successfully"
+                        error == null
+                    }
+                )
+            }
 
             UserListCard(
                 users = users,
                 currentAdminId = currentAdminId,
                 onEditUser = {
                     editingUser = it
+                    showEditor = true
                     message = null
                 },
                 onToggleUserActive = { user, nextActive ->
@@ -95,7 +121,10 @@ internal fun UserManagementScreen(
                     val error = onDeleteUser(user.id)
                     isError = error != null
                     message = error ?: "User deleted"
-                    if (error == null && editingUser?.id == user.id) editingUser = null
+                    if (error == null && editingUser?.id == user.id) {
+                        editingUser = null
+                        showEditor = false
+                    }
                 }
             )
         }

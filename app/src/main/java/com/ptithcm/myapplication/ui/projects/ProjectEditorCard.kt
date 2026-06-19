@@ -3,27 +3,16 @@ package com.ptithcm.myapplication.ui.projects
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddBusiness
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,10 +28,11 @@ import com.ptithcm.myapplication.data.ProjectSummary
 import com.ptithcm.myapplication.data.UserAccount
 
 @Composable
-internal fun ProjectEditorCard(
+internal fun ProjectEditorDialog(
     editingProject: ProjectSummary?,
     currentUserId: Long,
     users: List<UserAccount>,
+    onDismiss: () -> Unit,
     onCancelEdit: () -> Unit,
     onCreateProject: (String, String, ProjectStatus, Set<Long>) -> Boolean,
     onUpdateProject: (Long, String, String, ProjectStatus, Set<Long>) -> Boolean
@@ -56,45 +46,29 @@ internal fun ProjectEditorCard(
     }
     var errorMessage by remember(editingProject?.id) { mutableStateOf<String?>(null) }
 
-    Card(
-        shape = RoundedCornerShape(24.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = if (isEditMode) "Edit project" else "Create project",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "Assign members and project status",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(top = 4.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Surface(
-                    modifier = Modifier.size(38.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Icon(
-                        imageVector = if (isEditMode) Icons.Filled.Edit else Icons.Filled.AddBusiness,
-                        contentDescription = null,
-                        modifier = Modifier.padding(8.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Column {
-                    Text(
-                        text = if (isEditMode) "Edit project" else "Create project",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Assign members and project status",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
             OutlinedTextField(
                 value = name,
                 onValueChange = {
@@ -134,44 +108,34 @@ internal fun ProjectEditorCard(
             errorMessage?.let {
                 Text(text = it, color = MaterialTheme.colorScheme.error)
             }
-
-            Row(modifier = Modifier.fillMaxWidth()) {
-                if (isEditMode) {
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = onCancelEdit
-                    ) {
-                        Text("Cancel")
+        }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onCancelEdit) {
+                Text("Cancel")
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val validationError = validateProject(name, memberIds)
+                    if (validationError != null) {
+                        errorMessage = validationError
+                        return@Button
                     }
-                    Spacer(Modifier.width(12.dp))
-                }
-                Button(
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        val validationError = validateProject(name, memberIds)
-                        if (validationError != null) {
-                            errorMessage = validationError
-                            return@Button
-                        }
 
-                        val saved = if (editingProject == null) {
-                            onCreateProject(name, description, status, memberIds)
-                        } else {
-                            onUpdateProject(editingProject.id, name, description, status, memberIds)
-                        }
-                        if (saved && !isEditMode) {
-                            name = ""
-                            description = ""
-                            status = ProjectStatus.PLANNING
-                            memberIds = setOf(currentUserId)
-                        }
+                    val saved = if (editingProject == null) {
+                        onCreateProject(name, description, status, memberIds)
+                    } else {
+                        onUpdateProject(editingProject.id, name, description, status, memberIds)
                     }
-                ) {
-                    Text(if (isEditMode) "Save changes" else "Create project")
+                    if (saved) onDismiss()
                 }
+            ) {
+                Text(if (isEditMode) "Save" else "Create")
             }
         }
-    }
+    )
 }
 
 @Composable

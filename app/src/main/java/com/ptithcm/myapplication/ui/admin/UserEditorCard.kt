@@ -2,27 +2,15 @@ package com.ptithcm.myapplication.ui.admin
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,9 +25,10 @@ import com.ptithcm.myapplication.data.UserAccount
 import com.ptithcm.myapplication.data.UserRole
 
 @Composable
-internal fun UserEditorCard(
+internal fun UserEditorDialog(
     editingUser: UserAccount?,
     currentAdminId: Long,
+    onDismiss: () -> Unit,
     onCancelEdit: () -> Unit,
     onCreateUser: (String, String, String, UserRole) -> Boolean,
     onUpdateUser: (Long, String, UserRole) -> Boolean
@@ -52,45 +41,29 @@ internal fun UserEditorCard(
     var role by remember(editingUser?.id) { mutableStateOf(editingUser?.role ?: UserRole.MEMBER) }
     var errorMessage by remember(editingUser?.id) { mutableStateOf<String?>(null) }
 
-    Card(
-        shape = RoundedCornerShape(24.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = if (isEditMode) "Edit user" else "Create user",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = if (isEditMode) "Update profile and role" else "Create an account for your team",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(top = 4.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Surface(
-                    modifier = Modifier.size(38.dp),
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.primaryContainer
-                ) {
-                    Icon(
-                        imageVector = if (isEditMode) Icons.Filled.Edit else Icons.Filled.PersonAdd,
-                        contentDescription = null,
-                        modifier = Modifier.padding(8.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Column {
-                    Text(
-                        text = if (isEditMode) "Edit user" else "Create user",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = if (isEditMode) "Update profile and role" else "Create an account for your team",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
             OutlinedTextField(
                 value = username,
                 onValueChange = {
@@ -151,49 +124,39 @@ internal fun UserEditorCard(
                     color = MaterialTheme.colorScheme.error
                 )
             }
-
-            Row(modifier = Modifier.fillMaxWidth()) {
-                if (isEditMode) {
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = onCancelEdit
-                    ) {
-                        Text("Cancel")
+        }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onCancelEdit) {
+                Text("Cancel")
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val validationError = validateUserForm(
+                        username = username,
+                        password = password,
+                        fullName = fullName,
+                        isEditMode = isEditMode
+                    )
+                    if (validationError != null) {
+                        errorMessage = validationError
+                        return@Button
                     }
-                    Spacer(Modifier.width(12.dp))
-                }
-                Button(
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        val validationError = validateUserForm(
-                            username = username,
-                            password = password,
-                            fullName = fullName,
-                            isEditMode = isEditMode
-                        )
-                        if (validationError != null) {
-                            errorMessage = validationError
-                            return@Button
-                        }
 
-                        val saved = if (editingUser == null) {
-                            onCreateUser(username, password, fullName, role)
-                        } else {
-                            onUpdateUser(editingUser.id, fullName, role)
-                        }
-                        if (saved && !isEditMode) {
-                            username = ""
-                            password = ""
-                            fullName = ""
-                            role = UserRole.MEMBER
-                        }
+                    val saved = if (editingUser == null) {
+                        onCreateUser(username, password, fullName, role)
+                    } else {
+                        onUpdateUser(editingUser.id, fullName, role)
                     }
-                ) {
-                    Text(if (isEditMode) "Save changes" else "Create account")
+                    if (saved) onDismiss()
                 }
+            ) {
+                Text(if (isEditMode) "Save" else "Create")
             }
         }
-    }
+    )
 }
 
 @Composable

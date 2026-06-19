@@ -2,12 +2,17 @@ package com.ptithcm.myapplication.ui.projects
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,6 +42,7 @@ internal fun ProjectManagementScreen(
 ) {
     val canManage = currentUser.role == UserRole.ADMIN || currentUser.role == UserRole.MANAGER
     var editingProject by remember { mutableStateOf<ProjectSummary?>(null) }
+    var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
 
@@ -62,11 +68,31 @@ internal fun ProjectManagementScreen(
             }
 
             if (canManage) {
-                ProjectEditorCard(
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        editingProject = null
+                        showEditor = true
+                        message = null
+                    }
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Create project")
+                }
+            }
+
+            if (showEditor) {
+                ProjectEditorDialog(
                     editingProject = editingProject,
                     currentUserId = currentUser.id,
                     users = users.filter { it.isActive },
+                    onDismiss = {
+                        showEditor = false
+                        editingProject = null
+                    },
                     onCancelEdit = {
+                        showEditor = false
                         editingProject = null
                         message = null
                     },
@@ -80,7 +106,6 @@ internal fun ProjectManagementScreen(
                         val error = onUpdateProject(projectId, name, description, status, memberIds)
                         isError = error != null
                         message = error ?: "Project updated successfully"
-                        if (error == null) editingProject = null
                         error == null
                     }
                 )
@@ -91,13 +116,17 @@ internal fun ProjectManagementScreen(
                 canManage = canManage,
                 onEditProject = {
                     editingProject = it
+                    showEditor = true
                     message = null
                 },
                 onDeleteProject = { project ->
                     val error = onDeleteProject(project.id)
                     isError = error != null
                     message = error ?: "Project deleted"
-                    if (error == null && editingProject?.id == project.id) editingProject = null
+                    if (error == null && editingProject?.id == project.id) {
+                        editingProject = null
+                        showEditor = false
+                    }
                 }
             )
         }

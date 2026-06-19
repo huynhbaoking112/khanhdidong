@@ -48,6 +48,7 @@ internal fun HomeScreen(
     user: UserSession,
     onManageUsers: () -> Unit,
     onManageProjects: () -> Unit,
+    onManageTasks: () -> Unit,
     onChangePassword: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -61,6 +62,7 @@ internal fun HomeScreen(
         UserHeaderCard(user)
         DashboardStats(user.role)
         ProjectActionsCard(user.role, onManageProjects)
+        TaskActionsCard(user.role, onManageTasks)
         if (user.role == UserRole.ADMIN) {
             AdminActionsCard(onManageUsers)
         }
@@ -206,6 +208,46 @@ private fun UserHeaderCard(user: UserSession) {
                         color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.86f)
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TaskActionsCard(
+    role: UserRole,
+    onManageTasks: () -> Unit
+) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Tasks",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = if (role == UserRole.MEMBER) {
+                    "View your assigned tasks and deadlines."
+                } else {
+                    "Create tasks, assign members, set priority and due dates."
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onManageTasks
+            ) {
+                Icon(Icons.Filled.Assignment, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (role == UserRole.MEMBER) "View tasks" else "Manage tasks")
             }
         }
     }

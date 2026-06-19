@@ -67,6 +67,48 @@ enum class ProjectSaveResult {
     NOT_FOUND
 }
 
+enum class TaskStatus(val value: String) {
+    TODO("Todo"),
+    DOING("Doing"),
+    DONE("Done"),
+    OVERDUE("Overdue");
+
+    companion object {
+        fun fromValue(value: String): TaskStatus =
+            values().firstOrNull { it.value == value } ?: TODO
+    }
+}
+
+enum class TaskPriority(val value: String) {
+    LOW("Low"),
+    MEDIUM("Medium"),
+    HIGH("High");
+
+    companion object {
+        fun fromValue(value: String): TaskPriority =
+            values().firstOrNull { it.value == value } ?: MEDIUM
+    }
+}
+
+data class TaskItem(
+    val id: Long,
+    val title: String,
+    val description: String,
+    val projectId: Long,
+    val projectName: String,
+    val assigneeId: Long,
+    val assigneeName: String,
+    val status: TaskStatus,
+    val priority: TaskPriority,
+    val dueDate: String,
+    val isDeleted: Boolean
+)
+
+enum class TaskSaveResult {
+    SUCCESS,
+    NOT_FOUND
+}
+
 class AuthDatabaseHelper(context: Context) :
     SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
@@ -91,6 +133,8 @@ class AuthDatabaseHelper(context: Context) :
         seedUser(db, "member", "member123", "Team Member", UserRole.MEMBER)
         createProjectTables(db)
         seedProject(db)
+        createTaskTable(db)
+        seedTask(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -101,6 +145,10 @@ class AuthDatabaseHelper(context: Context) :
         if (oldVersion < 3) {
             createProjectTables(db)
             seedProject(db)
+        }
+        if (oldVersion < 4) {
+            createTaskTable(db)
+            seedTask(db)
         }
     }
 
@@ -257,7 +305,7 @@ class AuthDatabaseHelper(context: Context) :
             UserRole.MEMBER -> "p.$PROJECT_IS_DELETED = 0 AND p.$PROJECT_ID IN (SELECT $MEMBER_PROJECT_ID FROM $TABLE_PROJECT_MEMBERS WHERE $MEMBER_USER_ID = ?)"
         }
         val whereArgs = when (user.role) {
-            UserRole.ADMIN -> emptyArray()
+            UserRole.ADMIN -> emptyArray<String>()
             else -> arrayOf(user.id.toString())
         }
         val sql = """
@@ -369,6 +417,104 @@ class AuthDatabaseHelper(context: Context) :
         ) == 1
     }
 
+    fun listTasksForUser(user: UserSession, includeDeleted: Boolean): List<TaskItem> {
+        val deletedFilter = if (includeDeleted) "" else "AND t.$TASK_IS_DELETED = 0"
+        val roleFilter = when (user.role) {
+            UserRole.ADMIN -> ""
+            UserRole.MANAGER -> "AND p.$PROJECT_CREATED_BY = ?"
+            UserRole.MEMBER -> "AND t.$TASK_ASSIGNEE_ID = ?"
+        }
+        val args = if (user.role == UserRole.ADMIN) emptyArray<String>() else arrayOf(user.id.toString())
+        val sql = """
+            SELECT t.$TASK_ID, t.$TASK_TITLE, t.$TASK_DESCRIPTION, t.$TASK_PROJECT_ID,
+                   p.$PROJECT_NAME, t.$TASK_ASSIGNEE_ID, u.$COL_FULL_NAME AS assignee_name,
+                   t.$TASK_STATUS, t.$TASK_PRIORITY, t.$TASK_DUE_DATE, t.$TASK_IS_DELETED
+            FROM $TABLE_TASKS t
+            JOIN $TABLE_PROJECTS p ON p.$PROJECT_ID = t.$TASK_PROJECT_ID
+            JOIN $TABLE_USERS u ON u.$COL_ID = t.$TASK_ASSIGNEE_ID
+            WHERE p.$PROJECT_IS_DELETED = 0 $deletedFilter $roleFilter
+            ORDER BY t.$TASK_IS_DELETED ASC, t.$TASK_DUE_DATE ASC, t.$TASK_CREATED_AT DESC
+        """.trimIndent()
+
+        return readableDatabase.rawQuery(sql, args).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.toTaskItem())
+            }
+        }
+    }
+
+    fun createTask(
+        title: String,
+        description: String,
+        projectId: Long,
+        assigneeId: Long,
+        status: TaskStatus,
+        priority: TaskPriority,
+        dueDate: String,
+        createdBy: Long
+    ): TaskSaveResult {
+        val values = ContentValues().apply {
+            put(TASK_TITLE, title.trim())
+            put(TASK_DESCRIPTION, description.trim())
+            put(TASK_PROJECT_ID, projectId)
+            put(TASK_ASSIGNEE_ID, assigneeId)
+            put(TASK_STATUS, status.value)
+            put(TASK_PRIORITY, priority.value)
+            put(TASK_DUE_DATE, dueDate.trim())
+            put(TASK_CREATED_BY, createdBy)
+            put(TASK_IS_DELETED, 0)
+            put(TASK_CREATED_AT, System.currentTimeMillis())
+        }
+        return if (writableDatabase.insert(TABLE_TASKS, null, values) == -1L) {
+            TaskSaveResult.NOT_FOUND
+        } else {
+            TaskSaveResult.SUCCESS
+        }
+    }
+
+    fun updateTask(
+        taskId: Long,
+        title: String,
+        description: String,
+        projectId: Long,
+        assigneeId: Long,
+        status: TaskStatus,
+        priority: TaskPriority,
+        dueDate: String
+    ): TaskSaveResult {
+        val updatedRows = writableDatabase.update(
+            TABLE_TASKS,
+            ContentValues().apply {
+                put(TASK_TITLE, title.trim())
+                put(TASK_DESCRIPTION, description.trim())
+                put(TASK_PROJECT_ID, projectId)
+                put(TASK_ASSIGNEE_ID, assigneeId)
+                put(TASK_STATUS, status.value)
+                put(TASK_PRIORITY, priority.value)
+                put(TASK_DUE_DATE, dueDate.trim())
+            },
+            "$TASK_ID = ?",
+            arrayOf(taskId.toString())
+        )
+        return if (updatedRows == 1) TaskSaveResult.SUCCESS else TaskSaveResult.NOT_FOUND
+    }
+
+    fun deleteTask(taskId: Long): Boolean = setTaskDeleted(taskId, true)
+
+    fun restoreTask(taskId: Long): Boolean = setTaskDeleted(taskId, false)
+
+    private fun setTaskDeleted(taskId: Long, isDeleted: Boolean): Boolean {
+        val values = ContentValues().apply {
+            put(TASK_IS_DELETED, if (isDeleted) 1 else 0)
+        }
+        return writableDatabase.update(
+            TABLE_TASKS,
+            values,
+            "$TASK_ID = ?",
+            arrayOf(taskId.toString())
+        ) == 1
+    }
+
     private fun seedUser(
         db: SQLiteDatabase,
         username: String,
@@ -416,6 +562,29 @@ class AuthDatabaseHelper(context: Context) :
         )
     }
 
+    private fun createTaskTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_TASKS (
+                $TASK_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $TASK_TITLE TEXT NOT NULL,
+                $TASK_DESCRIPTION TEXT NOT NULL DEFAULT '',
+                $TASK_PROJECT_ID INTEGER NOT NULL,
+                $TASK_ASSIGNEE_ID INTEGER NOT NULL,
+                $TASK_STATUS TEXT NOT NULL CHECK($TASK_STATUS IN ('Todo', 'Doing', 'Done', 'Overdue')),
+                $TASK_PRIORITY TEXT NOT NULL CHECK($TASK_PRIORITY IN ('Low', 'Medium', 'High')),
+                $TASK_DUE_DATE TEXT NOT NULL,
+                $TASK_CREATED_BY INTEGER NOT NULL,
+                $TASK_IS_DELETED INTEGER NOT NULL DEFAULT 0,
+                $TASK_CREATED_AT INTEGER NOT NULL,
+                FOREIGN KEY($TASK_PROJECT_ID) REFERENCES $TABLE_PROJECTS($PROJECT_ID),
+                FOREIGN KEY($TASK_ASSIGNEE_ID) REFERENCES $TABLE_USERS($COL_ID),
+                FOREIGN KEY($TASK_CREATED_BY) REFERENCES $TABLE_USERS($COL_ID)
+            )
+            """.trimIndent()
+        )
+    }
+
     private fun seedProject(db: SQLiteDatabase) {
         val hasProject = db.query(
             TABLE_PROJECTS,
@@ -445,6 +614,49 @@ class AuthDatabaseHelper(context: Context) :
             }
         )
         if (projectId != -1L) replaceProjectMembers(db, projectId, setOf(adminId, managerId, memberId))
+    }
+
+    private fun seedTask(db: SQLiteDatabase) {
+        val hasTask = db.query(
+            TABLE_TASKS,
+            arrayOf(TASK_ID),
+            null,
+            null,
+            null,
+            null,
+            null,
+            "1"
+        ).use { it.moveToFirst() }
+        if (hasTask) return
+
+        val projectId = db.query(
+            TABLE_PROJECTS,
+            arrayOf(PROJECT_ID),
+            "$PROJECT_IS_DELETED = 0",
+            null,
+            null,
+            null,
+            PROJECT_CREATED_AT,
+            "1"
+        ).use { if (it.moveToFirst()) it.getLong(it.getColumnIndexOrThrow(PROJECT_ID)) else null } ?: return
+        val managerId = findUserId(db, "manager") ?: return
+        val memberId = findUserId(db, "member") ?: return
+        db.insert(
+            TABLE_TASKS,
+            null,
+            ContentValues().apply {
+                put(TASK_TITLE, "Design task dashboard")
+                put(TASK_DESCRIPTION, "Create the first version of task management screens.")
+                put(TASK_PROJECT_ID, projectId)
+                put(TASK_ASSIGNEE_ID, memberId)
+                put(TASK_STATUS, TaskStatus.TODO.value)
+                put(TASK_PRIORITY, TaskPriority.HIGH.value)
+                put(TASK_DUE_DATE, "2026-07-01")
+                put(TASK_CREATED_BY, managerId)
+                put(TASK_IS_DELETED, 0)
+                put(TASK_CREATED_AT, System.currentTimeMillis())
+            }
+        )
     }
 
     private fun findUserId(db: SQLiteDatabase, username: String): Long? = db.query(
@@ -520,6 +732,20 @@ class AuthDatabaseHelper(context: Context) :
         ).use { it.moveToFirst() }
     }
 
+    private fun Cursor.toTaskItem(): TaskItem = TaskItem(
+        id = getLong(getColumnIndexOrThrow(TASK_ID)),
+        title = getString(getColumnIndexOrThrow(TASK_TITLE)),
+        description = getString(getColumnIndexOrThrow(TASK_DESCRIPTION)),
+        projectId = getLong(getColumnIndexOrThrow(TASK_PROJECT_ID)),
+        projectName = getString(getColumnIndexOrThrow(PROJECT_NAME)),
+        assigneeId = getLong(getColumnIndexOrThrow(TASK_ASSIGNEE_ID)),
+        assigneeName = getString(getColumnIndexOrThrow("assignee_name")),
+        status = TaskStatus.fromValue(getString(getColumnIndexOrThrow(TASK_STATUS))),
+        priority = TaskPriority.fromValue(getString(getColumnIndexOrThrow(TASK_PRIORITY))),
+        dueDate = getString(getColumnIndexOrThrow(TASK_DUE_DATE)),
+        isDeleted = getInt(getColumnIndexOrThrow(TASK_IS_DELETED)) == 1
+    )
+
     private fun usernameExists(username: String): Boolean = readableDatabase.query(
         TABLE_USERS,
         arrayOf(COL_ID),
@@ -548,7 +774,7 @@ class AuthDatabaseHelper(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "task_manager_auth.db"
-        private const val DATABASE_VERSION = 3
+        private const val DATABASE_VERSION = 4
 
         private const val TABLE_USERS = "users"
         private const val COL_ID = "id"
@@ -572,6 +798,19 @@ class AuthDatabaseHelper(context: Context) :
         private const val TABLE_PROJECT_MEMBERS = "project_members"
         private const val MEMBER_PROJECT_ID = "project_id"
         private const val MEMBER_USER_ID = "user_id"
+
+        private const val TABLE_TASKS = "tasks"
+        private const val TASK_ID = "id"
+        private const val TASK_TITLE = "title"
+        private const val TASK_DESCRIPTION = "description"
+        private const val TASK_PROJECT_ID = "project_id"
+        private const val TASK_ASSIGNEE_ID = "assignee_id"
+        private const val TASK_STATUS = "status"
+        private const val TASK_PRIORITY = "priority"
+        private const val TASK_DUE_DATE = "due_date"
+        private const val TASK_CREATED_BY = "created_by"
+        private const val TASK_IS_DELETED = "is_deleted"
+        private const val TASK_CREATED_AT = "created_at"
 
         private val USER_COLUMNS = arrayOf(COL_ID, COL_USERNAME, COL_FULL_NAME, COL_ROLE)
         private val ACCOUNT_COLUMNS = arrayOf(

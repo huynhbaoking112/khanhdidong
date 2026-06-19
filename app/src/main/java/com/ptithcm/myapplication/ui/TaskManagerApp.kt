@@ -3,6 +3,7 @@ package com.ptithcm.myapplication.ui
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.ManageAccounts
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import com.ptithcm.myapplication.data.AuthDatabaseHelper
 import com.ptithcm.myapplication.data.ProjectSaveResult
 import com.ptithcm.myapplication.data.SessionManager
+import com.ptithcm.myapplication.data.TaskSaveResult
 import com.ptithcm.myapplication.data.UserRole
 import com.ptithcm.myapplication.data.UserSaveResult
 import com.ptithcm.myapplication.ui.admin.UserManagementScreen
@@ -29,6 +31,7 @@ import com.ptithcm.myapplication.ui.auth.ChangePasswordScreen
 import com.ptithcm.myapplication.ui.auth.LoginScreen
 import com.ptithcm.myapplication.ui.home.HomeScreen
 import com.ptithcm.myapplication.ui.projects.ProjectManagementScreen
+import com.ptithcm.myapplication.ui.tasks.TaskManagementScreen
 
 @Composable
 internal fun TaskManagerApp(
@@ -43,6 +46,8 @@ internal fun TaskManagerApp(
     }
     var usersVersion by remember { mutableStateOf(0) }
     var projectsVersion by remember { mutableStateOf(0) }
+    var tasksVersion by remember { mutableStateOf(0) }
+    var includeDeletedTasks by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -174,10 +179,69 @@ internal fun TaskManagerApp(
                     }
                 )
 
+                screen == AppScreen.TaskManagement -> TaskManagementScreen(
+                    currentUser = user,
+                    tasks = remember(tasksVersion, includeDeletedTasks, user.id, user.role) {
+                        database.listTasksForUser(user, includeDeletedTasks)
+                    },
+                    projects = remember(projectsVersion, user.id, user.role) {
+                        database.listProjectsForUser(user)
+                    },
+                    users = remember(usersVersion) { database.listUsers() },
+                    includeDeleted = includeDeletedTasks,
+                    onIncludeDeletedChange = { includeDeletedTasks = it },
+                    onBack = { screen = AppScreen.Home },
+                    onCreateTask = { title, description, projectId, assigneeId, status, priority, dueDate ->
+                        val error = database.createTask(
+                            title = title,
+                            description = description,
+                            projectId = projectId,
+                            assigneeId = assigneeId,
+                            status = status,
+                            priority = priority,
+                            dueDate = dueDate,
+                            createdBy = user.id
+                        ).toErrorMessage()
+                        if (error == null) tasksVersion++
+                        error
+                    },
+                    onUpdateTask = { taskId, title, description, projectId, assigneeId, status, priority, dueDate ->
+                        val error = database.updateTask(
+                            taskId = taskId,
+                            title = title,
+                            description = description,
+                            projectId = projectId,
+                            assigneeId = assigneeId,
+                            status = status,
+                            priority = priority,
+                            dueDate = dueDate
+                        ).toErrorMessage()
+                        if (error == null) tasksVersion++
+                        error
+                    },
+                    onDeleteTask = { taskId ->
+                        if (database.deleteTask(taskId)) {
+                            tasksVersion++
+                            null
+                        } else {
+                            "Task not found"
+                        }
+                    },
+                    onRestoreTask = { taskId ->
+                        if (database.restoreTask(taskId)) {
+                            tasksVersion++
+                            null
+                        } else {
+                            "Task not found"
+                        }
+                    }
+                )
+
                 else -> HomeScreen(
                     user = user,
                     onManageUsers = { screen = AppScreen.UserManagement },
                     onManageProjects = { screen = AppScreen.ProjectManagement },
+                    onManageTasks = { screen = AppScreen.TaskManagement },
                     onChangePassword = { screen = AppScreen.ChangePassword },
                     onLogout = {
                         sessionManager.clearSession()
@@ -209,6 +273,12 @@ private fun AppBottomMenu(
             icon = { Icon(Icons.Filled.Folder, contentDescription = null) },
             label = { Text("Projects") }
         )
+        NavigationBarItem(
+            selected = selectedScreen == AppScreen.TaskManagement,
+            onClick = { onSelect(AppScreen.TaskManagement) },
+            icon = { Icon(Icons.Filled.Assignment, contentDescription = null) },
+            label = { Text("Tasks") }
+        )
         if (role == UserRole.ADMIN) {
             NavigationBarItem(
                 selected = selectedScreen == AppScreen.UserManagement,
@@ -225,7 +295,8 @@ private enum class AppScreen {
     Home,
     ChangePassword,
     UserManagement,
-    ProjectManagement
+    ProjectManagement,
+    TaskManagement
 }
 
 private fun UserSaveResult.toErrorMessage(): String? = when (this) {
@@ -238,4 +309,9 @@ private fun ProjectSaveResult.toErrorMessage(): String? = when (this) {
     ProjectSaveResult.SUCCESS -> null
     ProjectSaveResult.DUPLICATE_NAME -> "Project name already exists"
     ProjectSaveResult.NOT_FOUND -> "Project not found"
+}
+
+private fun TaskSaveResult.toErrorMessage(): String? = when (this) {
+    TaskSaveResult.SUCCESS -> null
+    TaskSaveResult.NOT_FOUND -> "Task not found"
 }
