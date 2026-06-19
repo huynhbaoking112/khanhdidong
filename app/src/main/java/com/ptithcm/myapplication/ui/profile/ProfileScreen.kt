@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,6 +47,7 @@ internal fun ProfileScreen(
     projects: List<ProjectSummary>,
     assignedTasks: List<TaskItem>,
     onBack: () -> Unit,
+    onOpenSettings: () -> Unit,
     onUpdateProfile: (String) -> String?
 ) {
     val completedTasks = assignedTasks.filter { it.status == TaskStatus.DONE }
@@ -66,6 +68,13 @@ internal fun ProfileScreen(
             user = user,
             onUpdateProfile = onUpdateProfile
         )
+        Button(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onOpenSettings
+        ) {
+            Icon(Icons.Filled.Settings, contentDescription = null)
+            Text("Settings")
+        }
         ProfileStatsCard(
             projectCount = projects.size,
             assignedCount = assignedTasks.size,

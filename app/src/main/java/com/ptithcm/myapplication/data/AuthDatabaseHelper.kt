@@ -116,6 +116,22 @@ data class TaskAttachment(
     val createdAt: Long
 )
 
+data class TaskComment(
+    val id: Long,
+    val taskId: Long,
+    val authorName: String,
+    val content: String,
+    val createdAt: Long
+)
+
+data class TaskHistoryEntry(
+    val id: Long,
+    val taskId: Long,
+    val actorName: String,
+    val description: String,
+    val createdAt: Long
+)
+
 enum class TaskSaveResult {
     SUCCESS,
     INVALID_ASSIGNEE,
@@ -185,6 +201,7 @@ class AuthDatabaseHelper(context: Context) :
         seedProject(db)
         createTaskTable(db)
         createTaskAttachmentTable(db)
+        createTaskCollaborationTables(db)
         seedTask(db)
     }
 
@@ -207,6 +224,9 @@ class AuthDatabaseHelper(context: Context) :
         }
         if (oldVersion < 6) {
             createTaskAttachmentTable(db)
+        }
+        if (oldVersion < 7) {
+            createTaskCollaborationTables(db)
         }
     }
 
@@ -708,9 +728,28 @@ class AuthDatabaseHelper(context: Context) :
         taskId: Long,
         status: TaskStatus,
         progress: Int,
-        notes: String
+        notes: String,
+        actorUserId: Long? = null
     ): TaskSaveResult {
         val safeProgress = progress.coerceIn(0, 100)
+        val previous = readableDatabase.query(
+            TABLE_TASKS,
+            arrayOf(TASK_STATUS, TASK_PROGRESS),
+            "$TASK_ID = ? AND $TASK_IS_DELETED = 0",
+            arrayOf(taskId.toString()),
+            null,
+            null,
+            null,
+            "1"
+        ).use {
+            if (it.moveToFirst()) {
+                TaskStatus.fromValue(it.getString(it.getColumnIndexOrThrow(TASK_STATUS))) to
+                    it.getInt(it.getColumnIndexOrThrow(TASK_PROGRESS))
+            } else {
+                null
+            }
+        } ?: return TaskSaveResult.NOT_FOUND
+
         val updatedRows = writableDatabase.update(
             TABLE_TASKS,
             ContentValues().apply {
@@ -721,7 +760,17 @@ class AuthDatabaseHelper(context: Context) :
             "$TASK_ID = ? AND $TASK_IS_DELETED = 0",
             arrayOf(taskId.toString())
         )
-        return if (updatedRows == 1) TaskSaveResult.SUCCESS else TaskSaveResult.NOT_FOUND
+        if (updatedRows != 1) return TaskSaveResult.NOT_FOUND
+
+        actorUserId?.let { actorId ->
+            val changes = buildList {
+                if (previous.first != status) add("Status changed from ${previous.first.value} to ${status.value}")
+                if (previous.second != safeProgress) add("Progress changed from ${previous.second}% to $safeProgress%")
+            }
+            changes.forEach { addTaskHistory(taskId, actorId, it) }
+        }
+
+        return TaskSaveResult.SUCCESS
     }
 
     fun deleteTask(taskId: Long): Boolean = setTaskDeleted(taskId, true)
@@ -773,6 +822,71 @@ class AuthDatabaseHelper(context: Context) :
         "$ATTACHMENT_ID = ? AND $ATTACHMENT_TASK_ID = ?",
         arrayOf(attachmentId.toString(), taskId.toString())
     ) == 1
+
+    fun listTaskComments(taskId: Long): List<TaskComment> {
+        val sql = """
+            SELECT c.$COMMENT_ID, c.$COMMENT_TASK_ID, u.$COL_FULL_NAME AS author_name,
+                   c.$COMMENT_CONTENT, c.$COMMENT_CREATED_AT
+            FROM $TABLE_TASK_COMMENTS c
+            JOIN $TABLE_USERS u ON u.$COL_ID = c.$COMMENT_USER_ID
+            WHERE c.$COMMENT_TASK_ID = ?
+            ORDER BY c.$COMMENT_CREATED_AT DESC
+        """.trimIndent()
+
+        return readableDatabase.rawQuery(sql, arrayOf(taskId.toString())).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.toTaskComment())
+            }
+        }
+    }
+
+    fun addTaskComment(taskId: Long, userId: Long, content: String): Boolean {
+        val cleanContent = content.trim()
+        if (cleanContent.isEmpty()) return false
+
+        val taskExists = readableDatabase.query(
+            TABLE_TASKS,
+            arrayOf(TASK_ID),
+            "$TASK_ID = ? AND $TASK_IS_DELETED = 0",
+            arrayOf(taskId.toString()),
+            null,
+            null,
+            null,
+            "1"
+        ).use { it.moveToFirst() }
+        if (!taskExists) return false
+
+        val now = System.currentTimeMillis()
+        val inserted = writableDatabase.insert(
+            TABLE_TASK_COMMENTS,
+            null,
+            ContentValues().apply {
+                put(COMMENT_TASK_ID, taskId)
+                put(COMMENT_USER_ID, userId)
+                put(COMMENT_CONTENT, cleanContent)
+                put(COMMENT_CREATED_AT, now)
+            }
+        ) != -1L
+        if (inserted) addTaskHistory(taskId, userId, "Comment added")
+        return inserted
+    }
+
+    fun listTaskHistory(taskId: Long): List<TaskHistoryEntry> {
+        val sql = """
+            SELECT h.$HISTORY_ID, h.$HISTORY_TASK_ID, u.$COL_FULL_NAME AS actor_name,
+                   h.$HISTORY_DESCRIPTION, h.$HISTORY_CREATED_AT
+            FROM $TABLE_TASK_HISTORY h
+            JOIN $TABLE_USERS u ON u.$COL_ID = h.$HISTORY_USER_ID
+            WHERE h.$HISTORY_TASK_ID = ?
+            ORDER BY h.$HISTORY_CREATED_AT DESC
+        """.trimIndent()
+
+        return readableDatabase.rawQuery(sql, arrayOf(taskId.toString())).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.toTaskHistoryEntry())
+            }
+        }
+    }
 
     private fun setTaskDeleted(taskId: Long, isDeleted: Boolean): Boolean {
         val values = ContentValues().apply {
@@ -868,6 +982,35 @@ class AuthDatabaseHelper(context: Context) :
                 $ATTACHMENT_URI TEXT NOT NULL,
                 $ATTACHMENT_CREATED_AT INTEGER NOT NULL,
                 FOREIGN KEY($ATTACHMENT_TASK_ID) REFERENCES $TABLE_TASKS($TASK_ID)
+            )
+            """.trimIndent()
+        )
+    }
+
+    private fun createTaskCollaborationTables(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_TASK_COMMENTS (
+                $COMMENT_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $COMMENT_TASK_ID INTEGER NOT NULL,
+                $COMMENT_USER_ID INTEGER NOT NULL,
+                $COMMENT_CONTENT TEXT NOT NULL,
+                $COMMENT_CREATED_AT INTEGER NOT NULL,
+                FOREIGN KEY($COMMENT_TASK_ID) REFERENCES $TABLE_TASKS($TASK_ID),
+                FOREIGN KEY($COMMENT_USER_ID) REFERENCES $TABLE_USERS($COL_ID)
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $TABLE_TASK_HISTORY (
+                $HISTORY_ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                $HISTORY_TASK_ID INTEGER NOT NULL,
+                $HISTORY_USER_ID INTEGER NOT NULL,
+                $HISTORY_DESCRIPTION TEXT NOT NULL,
+                $HISTORY_CREATED_AT INTEGER NOT NULL,
+                FOREIGN KEY($HISTORY_TASK_ID) REFERENCES $TABLE_TASKS($TASK_ID),
+                FOREIGN KEY($HISTORY_USER_ID) REFERENCES $TABLE_USERS($COL_ID)
             )
             """.trimIndent()
         )
@@ -1043,6 +1186,17 @@ class AuthDatabaseHelper(context: Context) :
         return readableDatabase.rawQuery(sql, arrayOf(projectId.toString(), userId.toString())).use { it.moveToFirst() }
     }
 
+    private fun addTaskHistory(taskId: Long, userId: Long, description: String): Boolean = writableDatabase.insert(
+        TABLE_TASK_HISTORY,
+        null,
+        ContentValues().apply {
+            put(HISTORY_TASK_ID, taskId)
+            put(HISTORY_USER_ID, userId)
+            put(HISTORY_DESCRIPTION, description)
+            put(HISTORY_CREATED_AT, System.currentTimeMillis())
+        }
+    ) != -1L
+
     private fun hasTasksAssignedOutsideProjectMembers(projectId: Long, memberIds: Set<Long>): Boolean {
         if (memberIds.isEmpty()) return countActiveTasksForProject(projectId) > 0
 
@@ -1103,6 +1257,22 @@ class AuthDatabaseHelper(context: Context) :
         createdAt = getLong(getColumnIndexOrThrow(ATTACHMENT_CREATED_AT))
     )
 
+    private fun Cursor.toTaskComment(): TaskComment = TaskComment(
+        id = getLong(getColumnIndexOrThrow(COMMENT_ID)),
+        taskId = getLong(getColumnIndexOrThrow(COMMENT_TASK_ID)),
+        authorName = getString(getColumnIndexOrThrow("author_name")),
+        content = getString(getColumnIndexOrThrow(COMMENT_CONTENT)),
+        createdAt = getLong(getColumnIndexOrThrow(COMMENT_CREATED_AT))
+    )
+
+    private fun Cursor.toTaskHistoryEntry(): TaskHistoryEntry = TaskHistoryEntry(
+        id = getLong(getColumnIndexOrThrow(HISTORY_ID)),
+        taskId = getLong(getColumnIndexOrThrow(HISTORY_TASK_ID)),
+        actorName = getString(getColumnIndexOrThrow("actor_name")),
+        description = getString(getColumnIndexOrThrow(HISTORY_DESCRIPTION)),
+        createdAt = getLong(getColumnIndexOrThrow(HISTORY_CREATED_AT))
+    )
+
     private fun usernameExists(username: String): Boolean = readableDatabase.query(
         TABLE_USERS,
         arrayOf(COL_ID),
@@ -1131,7 +1301,7 @@ class AuthDatabaseHelper(context: Context) :
 
     companion object {
         private const val DATABASE_NAME = "task_manager_auth.db"
-        private const val DATABASE_VERSION = 6
+        private const val DATABASE_VERSION = 7
 
         private const val TABLE_USERS = "users"
         private const val COL_ID = "id"
@@ -1177,6 +1347,20 @@ class AuthDatabaseHelper(context: Context) :
         private const val ATTACHMENT_NAME = "display_name"
         private const val ATTACHMENT_URI = "uri"
         private const val ATTACHMENT_CREATED_AT = "created_at"
+
+        private const val TABLE_TASK_COMMENTS = "task_comments"
+        private const val COMMENT_ID = "id"
+        private const val COMMENT_TASK_ID = "task_id"
+        private const val COMMENT_USER_ID = "user_id"
+        private const val COMMENT_CONTENT = "content"
+        private const val COMMENT_CREATED_AT = "created_at"
+
+        private const val TABLE_TASK_HISTORY = "task_history"
+        private const val HISTORY_ID = "id"
+        private const val HISTORY_TASK_ID = "task_id"
+        private const val HISTORY_USER_ID = "user_id"
+        private const val HISTORY_DESCRIPTION = "description"
+        private const val HISTORY_CREATED_AT = "created_at"
 
         private val USER_COLUMNS = arrayOf(COL_ID, COL_USERNAME, COL_FULL_NAME, COL_ROLE)
         private val ACCOUNT_COLUMNS = arrayOf(

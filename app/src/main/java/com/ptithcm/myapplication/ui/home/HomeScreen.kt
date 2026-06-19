@@ -21,8 +21,6 @@ import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Group
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.PendingActions
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
@@ -30,7 +28,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,9 +49,7 @@ internal fun HomeScreen(
     onManageUsers: () -> Unit,
     onManageProjects: () -> Unit,
     onManageTasks: () -> Unit,
-    onViewReports: () -> Unit,
-    onChangePassword: () -> Unit,
-    onLogout: () -> Unit
+    onViewReports: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -72,10 +67,6 @@ internal fun HomeScreen(
             AdminActionsCard(onManageUsers)
         }
         RoleWorkspaceCard(user.role)
-        AccountActions(
-            onChangePassword = onChangePassword,
-            onLogout = onLogout
-        )
     }
 }
 
@@ -394,32 +385,6 @@ private fun AdminActionsCard(onManageUsers: () -> Unit) {
                 Spacer(Modifier.width(8.dp))
                 Text("Manage users")
             }
-        }
-    }
-}
-
-@Composable
-private fun AccountActions(
-    onChangePassword: () -> Unit,
-    onLogout: () -> Unit
-) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        OutlinedButton(
-            modifier = Modifier.weight(1f),
-            onClick = onChangePassword
-        ) {
-            Icon(Icons.Filled.Lock, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Change password")
-        }
-        Spacer(Modifier.width(12.dp))
-        Button(
-            modifier = Modifier.weight(1f),
-            onClick = onLogout
-        ) {
-            Icon(Icons.Filled.Logout, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Logout")
         }
     }
 }

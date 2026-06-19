@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -37,22 +38,31 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ptithcm.myapplication.data.TaskAttachment
+import com.ptithcm.myapplication.data.TaskComment
+import com.ptithcm.myapplication.data.TaskHistoryEntry
 import com.ptithcm.myapplication.data.TaskItem
 import com.ptithcm.myapplication.data.TaskStatus
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 internal fun TaskDetailDialog(
     task: TaskItem,
     attachments: List<TaskAttachment>,
+    comments: List<TaskComment>,
+    history: List<TaskHistoryEntry>,
     canManage: Boolean,
     onDismiss: () -> Unit,
     onSave: (TaskStatus, Int, String) -> Boolean,
     onAddAttachment: (String, String) -> Boolean,
-    onDeleteAttachment: (Long) -> Boolean
+    onDeleteAttachment: (Long) -> Boolean,
+    onAddComment: (String) -> Boolean
 ) {
     var status by remember(task.id) { mutableStateOf(task.status) }
     var progressText by remember(task.id) { mutableStateOf(task.progress.toString()) }
     var notes by remember(task.id) { mutableStateOf(task.notes) }
+    var commentText by remember(task.id) { mutableStateOf("") }
     var errorMessage by remember(task.id) { mutableStateOf<String?>(null) }
     val progress = progressText.toIntOrNull()?.coerceIn(0, 100) ?: 0
     val context = LocalContext.current
@@ -148,6 +158,25 @@ internal fun TaskDetailDialog(
                     }
                 )
 
+                CommentSection(
+                    comments = comments,
+                    commentText = commentText,
+                    canComment = !task.isDeleted,
+                    onCommentTextChange = {
+                        commentText = it
+                        errorMessage = null
+                    },
+                    onAddComment = {
+                        if (commentText.isBlank()) {
+                            errorMessage = "Comment is required"
+                        } else if (onAddComment(commentText)) {
+                            commentText = ""
+                        }
+                    }
+                )
+
+                HistorySection(history)
+
                 errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -173,6 +202,79 @@ internal fun TaskDetailDialog(
             }
         }
     )
+}
+
+@Composable
+private fun CommentSection(
+    comments: List<TaskComment>,
+    commentText: String,
+    canComment: Boolean,
+    onCommentTextChange: (String) -> Unit,
+    onAddComment: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Comments", style = MaterialTheme.typography.labelLarge)
+        if (canComment) {
+            OutlinedTextField(
+                value = commentText,
+                onValueChange = onCommentTextChange,
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                label = { Text("Add comment") }
+            )
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onAddComment
+            ) {
+                Icon(Icons.Filled.Send, contentDescription = null)
+                Text("Post comment")
+            }
+        }
+
+        if (comments.isEmpty()) {
+            Text(
+                text = "No comments yet",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            comments.forEach { comment ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(comment.content)
+                    Text(
+                        text = "${comment.authorName} - ${formatTimestamp(comment.createdAt)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistorySection(history: List<TaskHistoryEntry>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("History", style = MaterialTheme.typography.labelLarge)
+        if (history.isEmpty()) {
+            Text(
+                text = "No history yet",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            history.forEach { entry ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(entry.description)
+                    Text(
+                        text = "${entry.actorName} - ${formatTimestamp(entry.createdAt)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -283,3 +385,6 @@ private fun openAttachment(context: android.content.Context, uri: String): Boole
         true
     }.getOrDefault(false)
 }
+
+private fun formatTimestamp(value: Long): String =
+    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(value))

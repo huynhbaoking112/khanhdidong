@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.ptithcm.myapplication.data.AppThemeMode
 import com.ptithcm.myapplication.data.AuthDatabaseHelper
 import com.ptithcm.myapplication.data.ProjectSaveResult
 import com.ptithcm.myapplication.data.SessionManager
@@ -34,12 +35,15 @@ import com.ptithcm.myapplication.ui.home.HomeScreen
 import com.ptithcm.myapplication.ui.profile.ProfileScreen
 import com.ptithcm.myapplication.ui.projects.ProjectManagementScreen
 import com.ptithcm.myapplication.ui.reports.ReportsScreen
+import com.ptithcm.myapplication.ui.settings.SettingsScreen
 import com.ptithcm.myapplication.ui.tasks.TaskManagementScreen
 
 @Composable
 internal fun TaskManagerApp(
     database: AuthDatabaseHelper,
-    sessionManager: SessionManager
+    sessionManager: SessionManager,
+    themeMode: AppThemeMode,
+    onThemeModeChange: (AppThemeMode) -> Unit
 ) {
     var currentUser by remember {
         mutableStateOf(sessionManager.getUserId()?.let(database::getUserById))
@@ -89,7 +93,7 @@ internal fun TaskManagerApp(
 
                 screen == AppScreen.ChangePassword -> ChangePasswordScreen(
                     user = user,
-                    onBack = { screen = AppScreen.Home },
+                    onBack = { screen = AppScreen.Settings },
                     onChangePassword = { currentPassword, newPassword ->
                         if (database.changePassword(user.id, currentPassword, newPassword)) {
                             null
@@ -237,7 +241,8 @@ internal fun TaskManagerApp(
                                 taskId = taskId,
                                 status = status,
                                 progress = progress,
-                                notes = notes
+                                notes = notes,
+                                actorUserId = user.id
                             ).toErrorMessage()
                         }
                         if (error == null) tasksVersion++
@@ -266,6 +271,29 @@ internal fun TaskManagerApp(
                             null
                         } else {
                             "Attachment not found"
+                        }
+                    },
+                    onListTaskComments = { taskId ->
+                        if (database.canUserAccessTask(user, taskId, includeDeleted = true)) {
+                            database.listTaskComments(taskId)
+                        } else {
+                            emptyList()
+                        }
+                    },
+                    onAddTaskComment = { taskId, content ->
+                        if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
+                            "Task not found"
+                        } else if (database.addTaskComment(taskId, user.id, content)) {
+                            null
+                        } else {
+                            "Could not add comment"
+                        }
+                    },
+                    onListTaskHistory = { taskId ->
+                        if (database.canUserAccessTask(user, taskId, includeDeleted = true)) {
+                            database.listTaskHistory(taskId)
+                        } else {
+                            emptyList()
                         }
                     },
                     onDeleteTask = { taskId ->
@@ -299,6 +327,7 @@ internal fun TaskManagerApp(
                         database.listTasksAssignedToUser(user.id)
                     },
                     onBack = { screen = AppScreen.Home },
+                    onOpenSettings = { screen = AppScreen.Settings },
                     onUpdateProfile = { fullName ->
                         val error = database.updateProfile(user.id, fullName).toErrorMessage()
                         if (error == null) {
@@ -316,6 +345,19 @@ internal fun TaskManagerApp(
                     onBack = { screen = AppScreen.Home }
                 )
 
+                screen == AppScreen.Settings -> SettingsScreen(
+                    user = user,
+                    themeMode = themeMode,
+                    onThemeModeChange = onThemeModeChange,
+                    onBack = { screen = AppScreen.Profile },
+                    onChangePassword = { screen = AppScreen.ChangePassword },
+                    onLogout = {
+                        sessionManager.clearSession()
+                        currentUser = null
+                        screen = AppScreen.Login
+                    }
+                )
+
                 else -> HomeScreen(
                     user = user,
                     dashboardStats = remember(projectsVersion, tasksVersion, user.id, user.role) {
@@ -324,13 +366,7 @@ internal fun TaskManagerApp(
                     onManageUsers = { screen = AppScreen.UserManagement },
                     onManageProjects = { screen = AppScreen.ProjectManagement },
                     onManageTasks = { screen = AppScreen.TaskManagement },
-                    onViewReports = { screen = AppScreen.Reports },
-                    onChangePassword = { screen = AppScreen.ChangePassword },
-                    onLogout = {
-                        sessionManager.clearSession()
-                        currentUser = null
-                        screen = AppScreen.Login
-                    }
+                    onViewReports = { screen = AppScreen.Reports }
                 )
             }
         }
@@ -366,7 +402,7 @@ private fun AppBottomMenu(
             label = { Text("Tasks") }
         )
         NavigationBarItem(
-            selected = selectedScreen == AppScreen.Profile,
+            selected = selectedScreen == AppScreen.Profile || selectedScreen == AppScreen.Settings,
             onClick = { onSelect(AppScreen.Profile) },
             alwaysShowLabel = false,
             icon = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
@@ -392,6 +428,7 @@ private enum class AppScreen {
     ProjectManagement,
     TaskManagement,
     Profile,
+    Settings,
     Reports
 }
 

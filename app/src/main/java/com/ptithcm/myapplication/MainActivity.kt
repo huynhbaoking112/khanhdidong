@@ -4,6 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.ptithcm.myapplication.data.AuthDatabaseHelper
 import com.ptithcm.myapplication.data.SessionManager
 import com.ptithcm.myapplication.ui.TaskManagerApp
@@ -20,10 +25,18 @@ class MainActivity : ComponentActivity() {
         val sessionManager = SessionManager(applicationContext)
 
         setContent {
-            MyApplicationTheme {
+            var themeMode by remember { mutableStateOf(sessionManager.getThemeMode()) }
+            val darkTheme = sessionManager.isDarkTheme(themeMode, isSystemInDarkTheme())
+
+            MyApplicationTheme(darkTheme = darkTheme) {
                 TaskManagerApp(
                     database = database,
-                    sessionManager = sessionManager
+                    sessionManager = sessionManager,
+                    themeMode = themeMode,
+                    onThemeModeChange = {
+                        sessionManager.saveThemeMode(it)
+                        themeMode = it
+                    }
                 )
             }
         }
