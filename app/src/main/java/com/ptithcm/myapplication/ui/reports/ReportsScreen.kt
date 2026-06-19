@@ -1,5 +1,6 @@
 package com.ptithcm.myapplication.ui.reports
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -27,10 +29,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +45,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ptithcm.myapplication.data.MemberPerformanceReport
@@ -49,6 +58,9 @@ import com.ptithcm.myapplication.data.ReportMetric
 import com.ptithcm.myapplication.data.TaskItem
 import com.ptithcm.myapplication.data.TaskPriority
 import com.ptithcm.myapplication.data.TaskStatus
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 @Composable
 internal fun ReportsScreen(
@@ -62,6 +74,10 @@ internal fun ReportsScreen(
     var priorityFilter by remember { mutableStateOf<TaskPriority?>(null) }
     var fromDate by remember { mutableStateOf("") }
     var toDate by remember { mutableStateOf("") }
+    var sortMode by remember { mutableStateOf(ReportSortMode.COUNT) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val clipboard = LocalClipboardManager.current
 
     val filteredTasks = tasks
         .filter { task -> projectIdFilter == null || task.projectId == projectIdFilter }
@@ -69,57 +85,68 @@ internal fun ReportsScreen(
         .filter { task -> priorityFilter == null || task.priority == priorityFilter }
         .filter { task -> fromDate.isBlank() || task.dueDate >= fromDate.trim() }
         .filter { task -> toDate.isBlank() || task.dueDate <= toDate.trim() }
-    val filteredReport = buildFilteredReport(projects, filteredTasks)
+    val filteredReport = buildFilteredReport(projects, filteredTasks, sortMode)
     val filtersActive = projectIdFilter != null || statusFilter != null || priorityFilter != null || fromDate.isNotBlank() || toDate.isNotBlank()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        OutlinedButton(onClick = onBack) {
-            Text("Back to home")
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            message = null
         }
+    }
 
-        ReportsHeaderCard(filteredReport, reportData.totalTasks)
-        ReportFiltersCard(
-            projects = projects,
-            projectIdFilter = projectIdFilter,
-            statusFilter = statusFilter,
-            priorityFilter = priorityFilter,
-            fromDate = fromDate,
-            toDate = toDate,
-            onProjectFilterChange = { projectIdFilter = it },
-            onStatusFilterChange = { statusFilter = it },
-            onPriorityFilterChange = { priorityFilter = it },
-            onFromDateChange = { fromDate = it },
-            onToDateChange = { toDate = it },
-            onClearFilters = {
-                projectIdFilter = null
-                statusFilter = null
-                priorityFilter = null
-                fromDate = ""
-                toDate = ""
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(innerPadding)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            OutlinedButton(onClick = onBack) {
+                Text("Back to home")
             }
-        )
 
-        if (filteredTasks.isEmpty()) {
-            EmptyReportState(filtersActive)
-        } else {
-            ReportMetricSection(
-                title = "Tasks by status",
-                metrics = filteredReport.statusMetrics,
-                color = MaterialTheme.colorScheme.primary
+            ReportsHeaderCard(filteredReport, reportData.totalTasks)
+            ReportFiltersCard(
+                projects = projects,
+                projectIdFilter = projectIdFilter,
+                statusFilter = statusFilter,
+                priorityFilter = priorityFilter,
+                sortMode = sortMode,
+                fromDate = fromDate,
+                toDate = toDate,
+                onProjectFilterChange = { projectIdFilter = it },
+                onStatusFilterChange = { statusFilter = it },
+                onPriorityFilterChange = { priorityFilter = it },
+                onSortModeChange = { sortMode = it },
+                onFromDateChange = { fromDate = it },
+                onToDateChange = { toDate = it },
+                onExport = {
+                    clipboard.setText(AnnotatedString(exportReportText(filteredReport)))
+                    message = "Report copied to clipboard"
+                },
+                onClearFilters = {
+                    projectIdFilter = null
+                    statusFilter = null
+                    priorityFilter = null
+                    fromDate = ""
+                    toDate = ""
+                }
             )
-            ReportMetricSection(
-                title = "Tasks by priority",
-                metrics = filteredReport.priorityMetrics,
-                color = MaterialTheme.colorScheme.tertiary
-            )
-            ProjectReportSection(filteredReport.projectReports)
-            MemberPerformanceSection(filteredReport.memberPerformance)
+
+            if (filteredTasks.isEmpty()) {
+                EmptyReportState(filtersActive)
+            } else {
+                ReportMetricSection("Tasks by status", filteredReport.statusMetrics, MaterialTheme.colorScheme.primary)
+                ReportMetricSection("Tasks by priority", filteredReport.priorityMetrics, MaterialTheme.colorScheme.tertiary)
+                ProjectReportSection(filteredReport.projectReports)
+                MemberPerformanceSection(filteredReport.memberPerformance)
+            }
         }
     }
 }
@@ -179,13 +206,16 @@ private fun ReportFiltersCard(
     projectIdFilter: Long?,
     statusFilter: TaskStatus?,
     priorityFilter: TaskPriority?,
+    sortMode: ReportSortMode,
     fromDate: String,
     toDate: String,
     onProjectFilterChange: (Long?) -> Unit,
     onStatusFilterChange: (TaskStatus?) -> Unit,
     onPriorityFilterChange: (TaskPriority?) -> Unit,
+    onSortModeChange: (ReportSortMode) -> Unit,
     onFromDateChange: (String) -> Unit,
     onToDateChange: (String) -> Unit,
+    onExport: () -> Unit,
     onClearFilters: () -> Unit
 ) {
     ReportCard(title = "Filters", icon = Icons.Filled.FilterAlt) {
@@ -207,26 +237,71 @@ private fun ReportFiltersCard(
             options = listOf("All priorities" to null) + TaskPriority.values().map { it.value to it },
             onSelect = onPriorityFilterChange
         )
+        DropdownFilter(
+            label = "Sort charts",
+            value = sortMode.label,
+            options = ReportSortMode.values().map { it.label to it },
+            onSelect = { it?.let(onSortModeChange) }
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
+            DateFilterField(
+                modifier = Modifier.weight(1f),
+                label = "From",
                 value = fromDate,
-                onValueChange = onFromDateChange,
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = { Text("From") },
-                placeholder = { Text("yyyy-MM-dd") }
+                onValueChange = onFromDateChange
             )
-            OutlinedTextField(
-                value = toDate,
-                onValueChange = onToDateChange,
+            DateFilterField(
                 modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = { Text("To") },
-                placeholder = { Text("yyyy-MM-dd") }
+                label = "To",
+                value = toDate,
+                onValueChange = onToDateChange
             )
         }
-        TextButton(onClick = onClearFilters) {
-            Text("Clear filters")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onExport) {
+                Text("Export text")
+            }
+            TextButton(onClick = onClearFilters) {
+                Text("Clear filters")
+            }
+        }
+    }
+}
+
+@Composable
+private fun DateFilterField(
+    modifier: Modifier,
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit
+) {
+    val context = LocalContext.current
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            label = { Text(label) },
+            placeholder = { Text("yyyy-MM-dd") }
+        )
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = {
+                val calendar = parseDateOrToday(value)
+                DatePickerDialog(
+                    context,
+                    { _, year, month, day ->
+                        calendar.set(year, month, day)
+                        onValueChange(formatDate(calendar))
+                    },
+                    calendar.get(Calendar.YEAR),
+                    calendar.get(Calendar.MONTH),
+                    calendar.get(Calendar.DAY_OF_MONTH)
+                ).show()
+            }
+        ) {
+            Text("Pick")
         }
     }
 }
@@ -406,7 +481,7 @@ private fun BarRow(
     }
 }
 
-private fun buildFilteredReport(projects: List<ProjectSummary>, tasks: List<TaskItem>): ReportData {
+private fun buildFilteredReport(projects: List<ProjectSummary>, tasks: List<TaskItem>, sortMode: ReportSortMode): ReportData {
     val filteredProjectIds = tasks.map { it.projectId }.toSet()
     val filteredProjects = projects.filter { filteredProjectIds.contains(it.id) }
     val completionPercent = if (tasks.isEmpty()) 0 else tasks.count { it.status == TaskStatus.DONE } * 100 / tasks.size
@@ -415,16 +490,57 @@ private fun buildFilteredReport(projects: List<ProjectSummary>, tasks: List<Task
         totalProjects = filteredProjects.size,
         totalTasks = tasks.size,
         completionPercent = completionPercent,
-        statusMetrics = TaskStatus.values().map { status -> ReportMetric(status.value, tasks.count { it.status == status }) },
-        priorityMetrics = TaskPriority.values().map { priority -> ReportMetric(priority.value, tasks.count { it.priority == priority }) },
+        statusMetrics = sortMetrics(TaskStatus.values().map { status -> ReportMetric(status.value, tasks.count { it.status == status }) }, sortMode),
+        priorityMetrics = sortMetrics(TaskPriority.values().map { priority -> ReportMetric(priority.value, tasks.count { it.priority == priority }) }, sortMode),
         projectReports = filteredProjects.map { project ->
             val projectTasks = tasks.filter { it.projectId == project.id }
             ProjectReport(project.name, projectTasks.size, projectTasks.count { it.status == TaskStatus.DONE })
-        }.sortedByDescending { it.totalTasks },
+        }.let { reports ->
+            if (sortMode == ReportSortMode.COUNT) reports.sortedByDescending { it.totalTasks } else reports.sortedBy { it.projectName }
+        },
         memberPerformance = tasks.groupBy { it.assigneeName }
             .map { (memberName, memberTasks) ->
                 MemberPerformanceReport(memberName, memberTasks.size, memberTasks.count { it.status == TaskStatus.DONE })
             }
-            .sortedByDescending { it.doneTasks }
+            .let { reports -> if (sortMode == ReportSortMode.COUNT) reports.sortedByDescending { it.doneTasks } else reports.sortedBy { it.memberName } }
     )
 }
+
+private enum class ReportSortMode(val label: String) {
+    COUNT("Count"),
+    NAME("Alphabet")
+}
+
+private fun sortMetrics(metrics: List<ReportMetric>, sortMode: ReportSortMode): List<ReportMetric> =
+    if (sortMode == ReportSortMode.COUNT) metrics.sortedByDescending { it.count } else metrics.sortedBy { it.label }
+
+private fun exportReportText(reportData: ReportData): String = buildString {
+    appendLine("Reports")
+    appendLine("Projects: ${reportData.totalProjects}")
+    appendLine("Tasks: ${reportData.totalTasks}")
+    appendLine("Completion: ${reportData.completionPercent}%")
+    appendLine()
+    appendLine("Tasks by status")
+    reportData.statusMetrics.forEach { appendLine("${it.label}: ${it.count}") }
+    appendLine()
+    appendLine("Tasks by priority")
+    reportData.priorityMetrics.forEach { appendLine("${it.label}: ${it.count}") }
+    appendLine()
+    appendLine("Tasks by project")
+    reportData.projectReports.forEach { appendLine("${it.projectName}: ${it.doneTasks}/${it.totalTasks} done") }
+    appendLine()
+    appendLine("Member performance")
+    reportData.memberPerformance.forEach { appendLine("${it.memberName}: ${it.doneTasks}/${it.totalTasks} completed") }
+}
+
+private fun parseDateOrToday(value: String): Calendar {
+    val calendar = Calendar.getInstance()
+    runCatching {
+        SimpleDateFormat(DATE_PATTERN, Locale.US).apply { isLenient = false }.parse(value.trim())
+    }.getOrNull()?.let { calendar.time = it }
+    return calendar
+}
+
+private fun formatDate(calendar: Calendar): String = SimpleDateFormat(DATE_PATTERN, Locale.US).format(calendar.time)
+
+private const val DATE_PATTERN = "yyyy-MM-dd"

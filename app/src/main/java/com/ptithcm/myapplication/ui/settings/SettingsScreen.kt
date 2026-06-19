@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Help
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Palette
@@ -46,6 +47,7 @@ internal fun SettingsScreen(
     themeMode: AppThemeMode,
     onThemeModeChange: (AppThemeMode) -> Unit,
     onBack: () -> Unit,
+    onOpenHelp: () -> Unit,
     onChangePassword: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -97,6 +99,7 @@ internal fun SettingsScreen(
                 onChangePassword = onChangePassword,
                 onLogout = onLogout
             )
+            HelpCard(onOpenHelp)
         }
     }
 }
@@ -186,6 +189,45 @@ private fun AccountSettingsCard(
                 Icon(Icons.Filled.Logout, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Logout")
+            }
+        }
+    }
+}
+
+@Composable
+private fun HelpCard(onOpenHelp: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Help, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "About roles",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Text("Admin: manages users, projects, tasks and reports.")
+            Text("Manager: manages owned projects and tasks for assigned members.")
+            Text("Member: views assigned work, updates collaboration details, comments and attachments.")
+            Text(
+                text = "Demo flow: login as each role, create a project, assign tasks, update progress, add comments/attachments, then review reports.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedButton(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onOpenHelp
+            ) {
+                Text("Open help")
             }
         }
     }

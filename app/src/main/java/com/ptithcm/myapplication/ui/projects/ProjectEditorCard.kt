@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -63,52 +66,54 @@ internal fun ProjectEditorDialog(
             }
         },
         text = {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            OutlinedTextField(
-                value = name,
-                onValueChange = {
-                    name = it
-                    errorMessage = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                label = { Text("Project name") }
-            )
-            OutlinedTextField(
-                value = description,
-                onValueChange = {
-                    description = it
-                    errorMessage = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-                minLines = 2,
-                label = { Text("Description") }
-            )
-            StatusSelector(
-                status = status,
-                onStatusChange = {
-                    status = it
-                    errorMessage = null
-                }
-            )
-            MemberSelector(
-                users = users,
-                selectedIds = memberIds,
-                onToggle = { userId ->
-                    memberIds = if (memberIds.contains(userId)) memberIds - userId else memberIds + userId
-                    errorMessage = null
-                }
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 460.dp)
+                    .padding(top = 4.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                        errorMessage = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("Project name") }
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = {
+                        description = it
+                        errorMessage = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    label = { Text("Description") }
+                )
+                StatusSelector(
+                    status = status,
+                    onStatusChange = {
+                        status = it
+                        errorMessage = null
+                    }
+                )
+                MemberSelector(
+                    users = users,
+                    selectedIds = memberIds,
+                    onToggle = { userId ->
+                        memberIds = if (memberIds.contains(userId)) memberIds - userId else memberIds + userId
+                        errorMessage = null
+                    }
+                )
 
-            errorMessage?.let {
-                Text(text = it, color = MaterialTheme.colorScheme.error)
+                errorMessage?.let {
+                    Text(text = it, color = MaterialTheme.colorScheme.error)
+                }
             }
-        }
         },
         dismissButton = {
             OutlinedButton(onClick = onCancelEdit) {

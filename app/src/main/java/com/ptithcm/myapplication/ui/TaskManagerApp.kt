@@ -35,6 +35,7 @@ import com.ptithcm.myapplication.ui.home.HomeScreen
 import com.ptithcm.myapplication.ui.profile.ProfileScreen
 import com.ptithcm.myapplication.ui.projects.ProjectManagementScreen
 import com.ptithcm.myapplication.ui.reports.ReportsScreen
+import com.ptithcm.myapplication.ui.settings.HelpScreen
 import com.ptithcm.myapplication.ui.settings.SettingsScreen
 import com.ptithcm.myapplication.ui.tasks.TaskManagementScreen
 
@@ -227,7 +228,8 @@ internal fun TaskManagerApp(
                                 assigneeId = assigneeId,
                                 status = status,
                                 priority = priority,
-                                dueDate = dueDate
+                                dueDate = dueDate,
+                                actorUserId = user.id
                             ).toErrorMessage()
                         }
                         if (error == null) tasksVersion++
@@ -273,6 +275,15 @@ internal fun TaskManagerApp(
                             "Attachment not found"
                         }
                     },
+                    onDeleteTaskAttachments = { taskId ->
+                        if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
+                            "Task not found"
+                        } else if (database.deleteTaskAttachments(taskId)) {
+                            null
+                        } else {
+                            "Could not delete attachments"
+                        }
+                    },
                     onListTaskComments = { taskId ->
                         if (database.canUserAccessTask(user, taskId, includeDeleted = true)) {
                             database.listTaskComments(taskId)
@@ -289,6 +300,18 @@ internal fun TaskManagerApp(
                             "Could not add comment"
                         }
                     },
+                    onDeleteTaskComment = { taskId, commentId, authorId ->
+                        val canDeleteComment = user.role != UserRole.MEMBER || authorId == user.id
+                        if (!canDeleteComment) {
+                            "Only managers, admins, or the comment author can delete this comment"
+                        } else if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
+                            "Task not found"
+                        } else if (database.deleteTaskComment(taskId, commentId, user.id)) {
+                            null
+                        } else {
+                            "Comment not found"
+                        }
+                    },
                     onListTaskHistory = { taskId ->
                         if (database.canUserAccessTask(user, taskId, includeDeleted = true)) {
                             database.listTaskHistory(taskId)
@@ -299,7 +322,7 @@ internal fun TaskManagerApp(
                     onDeleteTask = { taskId ->
                         if (!database.canUserAccessTask(user, taskId, includeDeleted = false)) {
                             "Task not found"
-                        } else if (database.deleteTask(taskId)) {
+                        } else if (database.deleteTask(taskId, user.id)) {
                             tasksVersion++
                             null
                         } else {
@@ -309,7 +332,7 @@ internal fun TaskManagerApp(
                     onRestoreTask = { taskId ->
                         if (!database.canUserAccessTask(user, taskId, includeDeleted = true)) {
                             "Task not found"
-                        } else if (database.restoreTask(taskId)) {
+                        } else if (database.restoreTask(taskId, user.id)) {
                             tasksVersion++
                             null
                         } else {
@@ -356,12 +379,17 @@ internal fun TaskManagerApp(
                     themeMode = themeMode,
                     onThemeModeChange = onThemeModeChange,
                     onBack = { screen = AppScreen.Profile },
+                    onOpenHelp = { screen = AppScreen.Help },
                     onChangePassword = { screen = AppScreen.ChangePassword },
                     onLogout = {
                         sessionManager.clearSession()
                         currentUser = null
                         screen = AppScreen.Login
                     }
+                )
+
+                screen == AppScreen.Help -> HelpScreen(
+                    onBack = { screen = AppScreen.Settings }
                 )
 
                 else -> HomeScreen(
@@ -408,7 +436,7 @@ private fun AppBottomMenu(
             label = { Text("Tasks") }
         )
         NavigationBarItem(
-            selected = selectedScreen == AppScreen.Profile || selectedScreen == AppScreen.Settings,
+            selected = selectedScreen == AppScreen.Profile || selectedScreen == AppScreen.Settings || selectedScreen == AppScreen.Help,
             onClick = { onSelect(AppScreen.Profile) },
             alwaysShowLabel = false,
             icon = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
@@ -435,6 +463,7 @@ private enum class AppScreen {
     TaskManagement,
     Profile,
     Settings,
+    Help,
     Reports
 }
 

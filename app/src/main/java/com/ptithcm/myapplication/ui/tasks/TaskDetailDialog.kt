@@ -60,13 +60,15 @@ internal fun TaskDetailDialog(
     onSave: (TaskStatus, Int, String) -> Boolean,
     onAddAttachment: (String, String, String, Long) -> Boolean,
     onDeleteAttachment: (Long) -> Boolean,
-    onAddComment: (String) -> Boolean
+    onAddComment: (String) -> Boolean,
+    onDeleteComment: (TaskComment) -> Boolean
 ) {
     var status by remember(task.id) { mutableStateOf(task.status) }
     var progressText by remember(task.id) { mutableStateOf(task.progress.toString()) }
     var notes by remember(task.id) { mutableStateOf(task.notes) }
     var commentText by remember(task.id) { mutableStateOf("") }
     var attachmentToDelete by remember(task.id) { mutableStateOf<TaskAttachment?>(null) }
+    var commentToDelete by remember(task.id) { mutableStateOf<TaskComment?>(null) }
     var errorMessage by remember(task.id) { mutableStateOf<String?>(null) }
     val progress = progressText.toIntOrNull()?.coerceIn(0, 100) ?: 0
     val context = LocalContext.current
@@ -74,7 +76,7 @@ internal fun TaskDetailDialog(
         if (uri != null) {
             val copied = copyAttachmentToAppStorage(context, uri)
             if (copied == null) {
-                errorMessage = "Could not copy attachment"
+                errorMessage = "Could not copy attachment or file is over 10 MB"
             } else {
                 val added = onAddAttachment(copied.displayName, copied.uri, copied.mimeType, copied.sizeBytes)
                 if (!added) errorMessage = "Could not attach file"
@@ -123,6 +125,7 @@ internal fun TaskDetailDialog(
                     value = progressText,
                     onValueChange = {
                         progressText = it.filter(Char::isDigit).take(3)
+                        if (progressText == "100") status = TaskStatus.DONE
                         errorMessage = null
                     },
                     enabled = canManage && !task.isDeleted,
@@ -155,7 +158,7 @@ internal fun TaskDetailDialog(
                         attachmentLauncher.launch(arrayOf("*/*"))
                     },
                     onOpenAttachment = { attachment ->
-                        val opened = openAttachment(context, attachment.uri)
+                        val opened = openAttachment(context, attachment.uri, attachment.mimeType)
                         if (!opened) errorMessage = "No app can open this attachment"
                     },
                     onDeleteAttachment = { attachmentToDelete = it }
@@ -175,7 +178,8 @@ internal fun TaskDetailDialog(
                         } else if (onAddComment(commentText)) {
                             commentText = ""
                         }
-                    }
+                    },
+                    onDeleteComment = { commentToDelete = it }
                 )
 
                 HistorySection(history)
@@ -197,7 +201,9 @@ internal fun TaskDetailDialog(
                             errorMessage = "Progress must be from 0 to 100"
                             return@Button
                         }
-                        if (onSave(status, parsedProgress, notes)) onDismiss()
+                        val finalStatus = if (parsedProgress == 100) TaskStatus.DONE else status
+                        val finalProgress = if (finalStatus == TaskStatus.DONE) 100 else parsedProgress
+                        if (onSave(finalStatus, finalProgress, notes)) onDismiss()
                     }
                 ) {
                     Text("Save")
@@ -221,8 +227,34 @@ internal fun TaskDetailDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
                         val deleted = onDeleteAttachment(attachment.id)
+                        if (deleted) deleteCopiedAttachment(context, attachment.uri)
                         if (!deleted) errorMessage = "Could not delete attachment"
                         attachmentToDelete = null
+                    }
+                ) {
+                    Text("Delete")
+                }
+            }
+        )
+    }
+
+    commentToDelete?.let { comment ->
+        AlertDialog(
+            onDismissRequest = { commentToDelete = null },
+            title = { Text("Delete comment") },
+            text = { Text("Delete this comment from ${comment.authorName}?") },
+            dismissButton = {
+                OutlinedButton(onClick = { commentToDelete = null }) {
+                    Text("Cancel")
+                }
+            },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    onClick = {
+                        val deleted = onDeleteComment(comment)
+                        if (!deleted) errorMessage = "Could not delete comment"
+                        commentToDelete = null
                     }
                 ) {
                     Text("Delete")
@@ -238,7 +270,8 @@ private fun CommentSection(
     commentText: String,
     canComment: Boolean,
     onCommentTextChange: (String) -> Unit,
-    onAddComment: () -> Unit
+    onAddComment: () -> Unit,
+    onDeleteComment: (TaskComment) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Comments", style = MaterialTheme.typography.labelLarge)
@@ -267,13 +300,30 @@ private fun CommentSection(
             )
         } else {
             comments.forEach { comment ->
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(comment.content)
-                    Text(
-                        text = "${comment.authorName} - ${formatTimestamp(comment.createdAt)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(comment.content)
+                        Text(
+                            text = "${comment.authorName} - ${formatTimestamp(comment.createdAt)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (canComment) {
+                        IconButton(onClick = { onDeleteComment(comment) }) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "Delete comment",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -428,6 +478,10 @@ private fun copyAttachmentToAppStorage(context: android.content.Context, uri: Ur
     context.contentResolver.openInputStream(uri)?.use { input ->
         target.outputStream().use { output -> input.copyTo(output) }
     } ?: return null
+    if (target.length() > MAX_ATTACHMENT_BYTES) {
+        target.delete()
+        return null
+    }
     val copiedUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target)
     CopiedAttachment(
         displayName = displayName,
@@ -437,9 +491,9 @@ private fun copyAttachmentToAppStorage(context: android.content.Context, uri: Ur
     )
 }.getOrNull()
 
-private fun openAttachment(context: android.content.Context, uri: String): Boolean {
+private fun openAttachment(context: android.content.Context, uri: String, savedMimeType: String): Boolean {
     val parsedUri = Uri.parse(uri)
-    val mimeType = context.contentResolver.getType(parsedUri) ?: "*/*"
+    val mimeType = savedMimeType.ifBlank { context.contentResolver.getType(parsedUri) ?: "*/*" }
     val intent = Intent(Intent.ACTION_VIEW).apply {
         setDataAndType(parsedUri, mimeType)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -466,3 +520,10 @@ private fun formatFileSize(sizeBytes: Long): String = when {
 }
 
 private fun String.sanitizeFileName(): String = replace(Regex("[^A-Za-z0-9._-]"), "_")
+
+internal fun deleteCopiedAttachment(context: android.content.Context, uri: String) {
+    val fileName = Uri.parse(uri).lastPathSegment ?: return
+    File(context.filesDir, "attachments/$fileName").delete()
+}
+
+private const val MAX_ATTACHMENT_BYTES = 10L * 1024L * 1024L

@@ -121,6 +121,7 @@ data class TaskAttachment(
 data class TaskComment(
     val id: Long,
     val taskId: Long,
+    val authorId: Long,
     val authorName: String,
     val content: String,
     val createdAt: Long
@@ -709,9 +710,34 @@ class AuthDatabaseHelper(context: Context) :
         assigneeId: Long,
         status: TaskStatus,
         priority: TaskPriority,
-        dueDate: String
+        dueDate: String,
+        actorUserId: Long? = null
     ): TaskSaveResult {
         if (!isProjectMember(projectId, assigneeId)) return TaskSaveResult.INVALID_ASSIGNEE
+
+        val previous = readableDatabase.query(
+            TABLE_TASKS,
+            arrayOf(TASK_TITLE, TASK_DESCRIPTION, TASK_ASSIGNEE_ID, TASK_STATUS, TASK_PRIORITY, TASK_DUE_DATE),
+            "$TASK_ID = ? AND $TASK_IS_DELETED = 0",
+            arrayOf(taskId.toString()),
+            null,
+            null,
+            null,
+            "1"
+        ).use {
+            if (it.moveToFirst()) {
+                PreviousTaskEdit(
+                    title = it.getString(it.getColumnIndexOrThrow(TASK_TITLE)),
+                    description = it.getString(it.getColumnIndexOrThrow(TASK_DESCRIPTION)),
+                    assigneeId = it.getLong(it.getColumnIndexOrThrow(TASK_ASSIGNEE_ID)),
+                    status = TaskStatus.fromValue(it.getString(it.getColumnIndexOrThrow(TASK_STATUS))),
+                    priority = TaskPriority.fromValue(it.getString(it.getColumnIndexOrThrow(TASK_PRIORITY))),
+                    dueDate = it.getString(it.getColumnIndexOrThrow(TASK_DUE_DATE))
+                )
+            } else {
+                null
+            }
+        } ?: return TaskSaveResult.NOT_FOUND
 
         val updatedRows = writableDatabase.update(
             TABLE_TASKS,
@@ -723,11 +749,25 @@ class AuthDatabaseHelper(context: Context) :
                 put(TASK_STATUS, status.value)
                 put(TASK_PRIORITY, priority.value)
                 put(TASK_DUE_DATE, dueDate.trim())
+                if (status == TaskStatus.DONE) put(TASK_PROGRESS, 100)
             },
             "$TASK_ID = ?",
             arrayOf(taskId.toString())
         )
-        return if (updatedRows == 1) TaskSaveResult.SUCCESS else TaskSaveResult.NOT_FOUND
+        if (updatedRows != 1) return TaskSaveResult.NOT_FOUND
+
+        actorUserId?.let { actorId ->
+            buildList {
+                if (previous.title != title.trim()) add("Title changed")
+                if (previous.description != description.trim()) add("Description changed")
+                if (previous.assigneeId != assigneeId) add("Assignee changed")
+                if (previous.status != status) add("Status changed from ${previous.status.value} to ${status.value}")
+                if (previous.priority != priority) add("Priority changed from ${previous.priority.value} to ${priority.value}")
+                if (previous.dueDate != dueDate.trim()) add("Due date changed from ${previous.dueDate} to ${dueDate.trim()}")
+            }.forEach { addTaskHistory(taskId, actorId, it) }
+        }
+
+        return TaskSaveResult.SUCCESS
     }
 
     fun updateTaskDetails(
@@ -779,9 +819,9 @@ class AuthDatabaseHelper(context: Context) :
         return TaskSaveResult.SUCCESS
     }
 
-    fun deleteTask(taskId: Long): Boolean = setTaskDeleted(taskId, true)
+    fun deleteTask(taskId: Long, actorUserId: Long? = null): Boolean = setTaskDeleted(taskId, true, actorUserId)
 
-    fun restoreTask(taskId: Long): Boolean = setTaskDeleted(taskId, false)
+    fun restoreTask(taskId: Long, actorUserId: Long? = null): Boolean = setTaskDeleted(taskId, false, actorUserId)
 
     fun listTaskAttachments(taskId: Long): List<TaskAttachment> {
         val cursor = readableDatabase.query(
@@ -831,10 +871,16 @@ class AuthDatabaseHelper(context: Context) :
         arrayOf(attachmentId.toString(), taskId.toString())
     ) == 1
 
+    fun deleteTaskAttachments(taskId: Long): Boolean = writableDatabase.delete(
+        TABLE_TASK_ATTACHMENTS,
+        "$ATTACHMENT_TASK_ID = ?",
+        arrayOf(taskId.toString())
+    ) >= 0
+
     fun listTaskComments(taskId: Long): List<TaskComment> {
         val sql = """
             SELECT c.$COMMENT_ID, c.$COMMENT_TASK_ID, u.$COL_FULL_NAME AS author_name,
-                   c.$COMMENT_CONTENT, c.$COMMENT_CREATED_AT
+                   c.$COMMENT_USER_ID, c.$COMMENT_CONTENT, c.$COMMENT_CREATED_AT
             FROM $TABLE_TASK_COMMENTS c
             JOIN $TABLE_USERS u ON u.$COL_ID = c.$COMMENT_USER_ID
             WHERE c.$COMMENT_TASK_ID = ?
@@ -879,6 +925,16 @@ class AuthDatabaseHelper(context: Context) :
         return inserted
     }
 
+    fun deleteTaskComment(taskId: Long, commentId: Long, actorUserId: Long): Boolean {
+        val deleted = writableDatabase.delete(
+            TABLE_TASK_COMMENTS,
+            "$COMMENT_ID = ? AND $COMMENT_TASK_ID = ?",
+            arrayOf(commentId.toString(), taskId.toString())
+        ) == 1
+        if (deleted) addTaskHistory(taskId, actorUserId, "Comment deleted")
+        return deleted
+    }
+
     fun listTaskHistory(taskId: Long): List<TaskHistoryEntry> {
         val sql = """
             SELECT h.$HISTORY_ID, h.$HISTORY_TASK_ID, u.$COL_FULL_NAME AS actor_name,
@@ -896,16 +952,20 @@ class AuthDatabaseHelper(context: Context) :
         }
     }
 
-    private fun setTaskDeleted(taskId: Long, isDeleted: Boolean): Boolean {
+    private fun setTaskDeleted(taskId: Long, isDeleted: Boolean, actorUserId: Long? = null): Boolean {
         val values = ContentValues().apply {
             put(TASK_IS_DELETED, if (isDeleted) 1 else 0)
         }
-        return writableDatabase.update(
+        val updated = writableDatabase.update(
             TABLE_TASKS,
             values,
             "$TASK_ID = ?",
             arrayOf(taskId.toString())
         ) == 1
+        if (updated && actorUserId != null) {
+            addTaskHistory(taskId, actorUserId, if (isDeleted) "Task moved to trash" else "Task restored")
+        }
+        return updated
     }
 
     private fun seedUser(
@@ -1082,25 +1142,104 @@ class AuthDatabaseHelper(context: Context) :
         ).use { if (it.moveToFirst()) it.getLong(it.getColumnIndexOrThrow(PROJECT_ID)) else null } ?: return
         val managerId = findUserId(db, "manager") ?: return
         val memberId = findUserId(db, "member") ?: return
-        db.insert(
-            TABLE_TASKS,
-            null,
-            ContentValues().apply {
-                put(TASK_TITLE, "Design task dashboard")
-                put(TASK_DESCRIPTION, "Create the first version of task management screens.")
-                put(TASK_PROJECT_ID, projectId)
-                put(TASK_ASSIGNEE_ID, memberId)
-                put(TASK_STATUS, TaskStatus.TODO.value)
-                put(TASK_PRIORITY, TaskPriority.HIGH.value)
-                put(TASK_DUE_DATE, "2026-07-01")
-                put(TASK_PROGRESS, 0)
-                put(TASK_NOTES, "Initial task for the mobile project.")
-                put(TASK_CREATED_BY, managerId)
-                put(TASK_IS_DELETED, 0)
-                put(TASK_CREATED_AT, System.currentTimeMillis())
-            }
+        val dashboardTaskId = insertSeedTask(
+            db = db,
+            title = "Design task dashboard",
+            description = "Create the first version of task management screens.",
+            projectId = projectId,
+            assigneeId = memberId,
+            status = TaskStatus.TODO,
+            priority = TaskPriority.HIGH,
+            dueDate = "2026-07-01",
+            progress = 0,
+            notes = "Initial task for the mobile project.",
+            createdBy = managerId
         )
+        insertSeedTask(
+            db = db,
+            title = "Implement reports filters",
+            description = "Add project, status, priority and date filters for reports.",
+            projectId = projectId,
+            assigneeId = managerId,
+            status = TaskStatus.DONE,
+            priority = TaskPriority.MEDIUM,
+            dueDate = "2026-06-24",
+            progress = 100,
+            notes = "Completed for demo reporting.",
+            createdBy = managerId
+        )
+        insertSeedTask(
+            db = db,
+            title = "Polish attachment workflow",
+            description = "Copy attachments into app storage and show metadata.",
+            projectId = projectId,
+            assigneeId = memberId,
+            status = TaskStatus.DOING,
+            priority = TaskPriority.MEDIUM,
+            dueDate = "2026-07-05",
+            progress = 60,
+            notes = "File handling needs device testing.",
+            createdBy = managerId
+        )
+        insertSeedTask(
+            db = db,
+            title = "Prepare final demo",
+            description = "Verify Admin, Manager and Member flows before presentation.",
+            projectId = projectId,
+            assigneeId = memberId,
+            status = TaskStatus.OVERDUE,
+            priority = TaskPriority.HIGH,
+            dueDate = "2026-06-18",
+            progress = 30,
+            notes = "Use this task to demonstrate overdue reporting.",
+            createdBy = managerId
+        )
+        if (dashboardTaskId != -1L) {
+            db.insert(TABLE_TASK_COMMENTS, null, ContentValues().apply {
+                put(COMMENT_TASK_ID, dashboardTaskId)
+                put(COMMENT_USER_ID, managerId)
+                put(COMMENT_CONTENT, "Start with dashboard stats, then add filters after core task CRUD is stable.")
+                put(COMMENT_CREATED_AT, System.currentTimeMillis())
+            })
+            db.insert(TABLE_TASK_HISTORY, null, ContentValues().apply {
+                put(HISTORY_TASK_ID, dashboardTaskId)
+                put(HISTORY_USER_ID, managerId)
+                put(HISTORY_DESCRIPTION, "Task created for initial dashboard demo")
+                put(HISTORY_CREATED_AT, System.currentTimeMillis())
+            })
+        }
     }
+
+    private fun insertSeedTask(
+        db: SQLiteDatabase,
+        title: String,
+        description: String,
+        projectId: Long,
+        assigneeId: Long,
+        status: TaskStatus,
+        priority: TaskPriority,
+        dueDate: String,
+        progress: Int,
+        notes: String,
+        createdBy: Long
+    ): Long = db.insert(
+        TABLE_TASKS,
+        null,
+        ContentValues().apply {
+            put(TASK_TITLE, title)
+            put(TASK_DESCRIPTION, description)
+            put(TASK_PROJECT_ID, projectId)
+            put(TASK_ASSIGNEE_ID, assigneeId)
+            put(TASK_STATUS, status.value)
+            put(TASK_PRIORITY, priority.value)
+            put(TASK_DUE_DATE, dueDate)
+            put(TASK_PROGRESS, progress)
+            put(TASK_NOTES, notes)
+            put(TASK_CREATED_BY, createdBy)
+            put(TASK_IS_DELETED, 0)
+            put(TASK_CREATED_AT, System.currentTimeMillis())
+        }
+    )
 
     private fun findUserId(db: SQLiteDatabase, username: String): Long? = db.query(
         TABLE_USERS,
@@ -1207,6 +1346,15 @@ class AuthDatabaseHelper(context: Context) :
         }
     ) != -1L
 
+    private data class PreviousTaskEdit(
+        val title: String,
+        val description: String,
+        val assigneeId: Long,
+        val status: TaskStatus,
+        val priority: TaskPriority,
+        val dueDate: String
+    )
+
     private fun hasTasksAssignedOutsideProjectMembers(projectId: Long, memberIds: Set<Long>): Boolean {
         if (memberIds.isEmpty()) return countActiveTasksForProject(projectId) > 0
 
@@ -1272,6 +1420,7 @@ class AuthDatabaseHelper(context: Context) :
     private fun Cursor.toTaskComment(): TaskComment = TaskComment(
         id = getLong(getColumnIndexOrThrow(COMMENT_ID)),
         taskId = getLong(getColumnIndexOrThrow(COMMENT_TASK_ID)),
+        authorId = getLong(getColumnIndexOrThrow(COMMENT_USER_ID)),
         authorName = getString(getColumnIndexOrThrow("author_name")),
         content = getString(getColumnIndexOrThrow(COMMENT_CONTENT)),
         createdAt = getLong(getColumnIndexOrThrow(COMMENT_CREATED_AT))

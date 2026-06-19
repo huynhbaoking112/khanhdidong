@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -40,6 +41,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ptithcm.myapplication.data.ProjectSummary
 import com.ptithcm.myapplication.data.TaskAttachment
@@ -67,8 +69,10 @@ internal fun TaskManagementScreen(
     onListTaskAttachments: (Long) -> List<TaskAttachment>,
     onAddTaskAttachment: (Long, String, String, String, Long) -> String?,
     onDeleteTaskAttachment: (Long, Long) -> String?,
+    onDeleteTaskAttachments: (Long) -> String?,
     onListTaskComments: (Long) -> List<TaskComment>,
     onAddTaskComment: (Long, String) -> String?,
+    onDeleteTaskComment: (Long, Long, Long) -> String?,
     onListTaskHistory: (Long) -> List<TaskHistoryEntry>,
     onDeleteTask: (Long) -> String?,
     onRestoreTask: (Long) -> String?
@@ -83,7 +87,9 @@ internal fun TaskManagementScreen(
     var attachmentsVersion by remember { mutableStateOf(0) }
     var commentsVersion by remember { mutableStateOf(0) }
     var historyVersion by remember { mutableStateOf(0) }
+    var deleteAttachmentsWithTask by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
     var selectedProjectId by remember(projects) { mutableStateOf(projects.firstOrNull()?.id ?: 0L) }
     var searchQuery by remember { mutableStateOf("") }
     var statusFilter by remember { mutableStateOf<TaskStatus?>(null) }
@@ -230,6 +236,15 @@ internal fun TaskManagementScreen(
                             historyVersion++
                         }
                         error == null
+                    },
+                    onDeleteComment = { comment ->
+                        val error = onDeleteTaskComment(task.id, comment.id, comment.authorId)
+                        message = error ?: "Comment deleted"
+                        if (error == null) {
+                            commentsVersion++
+                            historyVersion++
+                        }
+                        error == null
                     }
                 )
             }
@@ -263,11 +278,28 @@ internal fun TaskManagementScreen(
 
     taskToDelete?.let { task ->
         AlertDialog(
-            onDismissRequest = { taskToDelete = null },
+            onDismissRequest = {
+                taskToDelete = null
+                deleteAttachmentsWithTask = false
+            },
             title = { Text("Delete task") },
-            text = { Text("Move ${task.title} to trash?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Move ${task.title} to trash?")
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = deleteAttachmentsWithTask,
+                            onCheckedChange = { deleteAttachmentsWithTask = it }
+                        )
+                        Text("Also delete attachments")
+                    }
+                }
+            },
             dismissButton = {
-                OutlinedButton(onClick = { taskToDelete = null }) {
+                OutlinedButton(onClick = {
+                    taskToDelete = null
+                    deleteAttachmentsWithTask = false
+                }) {
                     Text("Cancel")
                 }
             },
@@ -275,11 +307,18 @@ internal fun TaskManagementScreen(
                 Button(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
+                        val attachments = if (deleteAttachmentsWithTask) onListTaskAttachments(task.id) else emptyList()
                         val error = onDeleteTask(task.id)
-                        message = error ?: "Task moved to trash"
+                        val attachmentError = if (error == null && deleteAttachmentsWithTask) onDeleteTaskAttachments(task.id) else null
+                        if (error == null && attachmentError == null && deleteAttachmentsWithTask) {
+                            attachments.forEach { deleteCopiedAttachment(context, it.uri) }
+                            attachmentsVersion++
+                        }
+                        message = error ?: attachmentError ?: "Task moved to trash"
                         if (error == null && editingTask?.id == task.id) editingTask = null
                         if (error == null && detailTask?.id == task.id) detailTask = null
                         taskToDelete = null
+                        deleteAttachmentsWithTask = false
                     }
                 ) {
                     Text("Delete")

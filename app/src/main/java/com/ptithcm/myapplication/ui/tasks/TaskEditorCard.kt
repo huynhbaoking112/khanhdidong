@@ -164,7 +164,7 @@ internal fun TaskEditorDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    val validationError = validateTask(title, projectId, assigneeId, dueDate)
+                    val validationError = validateTask(title, projectId, assigneeId, dueDate, isEditMode)
                     if (validationError != null) {
                         errorMessage = validationError
                         return@Button
@@ -233,12 +233,13 @@ private fun <T> EnumSelector(
     }
 }
 
-private fun validateTask(title: String, projectId: Long, assigneeId: Long, dueDate: String): String? = when {
+private fun validateTask(title: String, projectId: Long, assigneeId: Long, dueDate: String, isEditMode: Boolean): String? = when {
     title.isBlank() -> "Title is required"
     projectId == 0L -> "Select a project"
     assigneeId == 0L -> "Select an assignee"
     dueDate.isBlank() -> "Due date is required"
     !isValidDate(dueDate.trim()) -> "Due date must be yyyy-MM-dd"
+    !isEditMode && dueDate.trim() < formatDate(Calendar.getInstance()) -> "Due date cannot be before today"
     else -> null
 }
 
