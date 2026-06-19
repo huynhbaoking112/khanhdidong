@@ -109,6 +109,16 @@ enum class TaskSaveResult {
     NOT_FOUND
 }
 
+data class DashboardStats(
+    val totalProjects: Int,
+    val totalTasks: Int,
+    val todoTasks: Int,
+    val doingTasks: Int,
+    val doneTasks: Int,
+    val overdueTasks: Int,
+    val highPriorityTasks: Int
+)
+
 class AuthDatabaseHelper(context: Context) :
     SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 
@@ -441,6 +451,21 @@ class AuthDatabaseHelper(context: Context) :
                 while (cursor.moveToNext()) add(cursor.toTaskItem())
             }
         }
+    }
+
+    fun getDashboardStats(user: UserSession): DashboardStats {
+        val projects = listProjectsForUser(user)
+        val tasks = listTasksForUser(user, includeDeleted = false)
+
+        return DashboardStats(
+            totalProjects = projects.size,
+            totalTasks = tasks.size,
+            todoTasks = tasks.count { it.status == TaskStatus.TODO },
+            doingTasks = tasks.count { it.status == TaskStatus.DOING },
+            doneTasks = tasks.count { it.status == TaskStatus.DONE },
+            overdueTasks = tasks.count { it.status == TaskStatus.OVERDUE },
+            highPriorityTasks = tasks.count { it.priority == TaskPriority.HIGH }
+        )
     }
 
     fun createTask(

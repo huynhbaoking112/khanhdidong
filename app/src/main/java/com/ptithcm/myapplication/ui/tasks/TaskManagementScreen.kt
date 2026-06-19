@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -22,6 +23,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -58,8 +61,20 @@ internal fun TaskManagementScreen(
     var message by remember { mutableStateOf<String?>(null) }
     var isError by remember { mutableStateOf(false) }
     var selectedProjectId by remember(projects) { mutableStateOf(projects.firstOrNull()?.id ?: 0L) }
+    var searchQuery by remember { mutableStateOf("") }
+    var statusFilter by remember { mutableStateOf<TaskStatus?>(null) }
+    var priorityFilter by remember { mutableStateOf<TaskPriority?>(null) }
     val selectedProject = projects.firstOrNull { it.id == selectedProjectId }
-    val projectTasks = tasks.filter { it.projectId == selectedProjectId }
+    val projectTasks = tasks
+        .filter { it.projectId == selectedProjectId }
+        .filter { task ->
+            val query = searchQuery.trim()
+            query.isEmpty() ||
+                task.title.contains(query, ignoreCase = true) ||
+                task.description.contains(query, ignoreCase = true)
+        }
+        .filter { task -> statusFilter == null || task.status == statusFilter }
+        .filter { task -> priorityFilter == null || task.priority == priorityFilter }
 
     Column(
         modifier = Modifier
@@ -80,6 +95,23 @@ internal fun TaskManagementScreen(
                 selectedProjectId = it
                 editingTask = null
                 message = null
+                searchQuery = ""
+                statusFilter = null
+                priorityFilter = null
+            }
+        )
+
+        TaskFilterCard(
+            searchQuery = searchQuery,
+            statusFilter = statusFilter,
+            priorityFilter = priorityFilter,
+            onSearchQueryChange = { searchQuery = it },
+            onStatusFilterChange = { statusFilter = it },
+            onPriorityFilterChange = { priorityFilter = it },
+            onClearFilters = {
+                searchQuery = ""
+                statusFilter = null
+                priorityFilter = null
             }
         )
 
@@ -160,6 +192,94 @@ internal fun TaskManagementScreen(
                 message = error ?: "Task restored"
             }
         )
+    }
+}
+
+@Composable
+private fun TaskFilterCard(
+    searchQuery: String,
+    statusFilter: TaskStatus?,
+    priorityFilter: TaskPriority?,
+    onSearchQueryChange: (String) -> Unit,
+    onStatusFilterChange: (TaskStatus?) -> Unit,
+    onPriorityFilterChange: (TaskPriority?) -> Unit,
+    onClearFilters: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                leadingIcon = {
+                    Icon(Icons.Filled.Search, contentDescription = null)
+                },
+                label = { Text("Search task") }
+            )
+
+            EnumFilterButton(
+                label = "Status",
+                value = statusFilter?.value ?: "All status",
+                options = TaskStatus.values().map { it.value to it },
+                onSelect = onStatusFilterChange
+            )
+            EnumFilterButton(
+                label = "Priority",
+                value = priorityFilter?.value ?: "All priority",
+                options = TaskPriority.values().map { it.value to it },
+                onSelect = onPriorityFilterChange
+            )
+
+            TextButton(onClick = onClearFilters) {
+                Text("Clear filters")
+            }
+        }
+    }
+}
+
+@Composable
+private fun <T> EnumFilterButton(
+    label: String,
+    value: String,
+    options: List<Pair<String, T>>,
+    onSelect: (T?) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { expanded = true }
+        ) {
+            Text(value)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("All") },
+                onClick = {
+                    onSelect(null)
+                    expanded = false
+                }
+            )
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.first) },
+                    onClick = {
+                        onSelect(option.second)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }
 

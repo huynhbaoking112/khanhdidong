@@ -40,12 +40,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.ptithcm.myapplication.data.DashboardStats
 import com.ptithcm.myapplication.data.UserRole
 import com.ptithcm.myapplication.data.UserSession
 
 @Composable
 internal fun HomeScreen(
     user: UserSession,
+    dashboardStats: DashboardStats,
     onManageUsers: () -> Unit,
     onManageProjects: () -> Unit,
     onManageTasks: () -> Unit,
@@ -60,7 +62,7 @@ internal fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         UserHeaderCard(user)
-        DashboardStats(user.role)
+        DashboardStatsGrid(dashboardStats)
         ProjectActionsCard(user.role, onManageProjects)
         TaskActionsCard(user.role, onManageTasks)
         if (user.role == UserRole.ADMIN) {
@@ -75,7 +77,13 @@ internal fun HomeScreen(
 }
 
 @Composable
-private fun DashboardStats(role: UserRole) {
+private fun DashboardStatsGrid(stats: DashboardStats) {
+    val completionPercent = if (stats.totalTasks == 0) {
+        0
+    } else {
+        stats.doneTasks * 100 / stats.totalTasks
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = "Dashboard",
@@ -86,14 +94,14 @@ private fun DashboardStats(role: UserRole) {
             StatCard(
                 modifier = Modifier.weight(1f),
                 title = "Projects",
-                value = if (role == UserRole.MEMBER) "My" else "All",
+                value = stats.totalProjects.toString(),
                 icon = Icons.Filled.Folder,
                 color = MaterialTheme.colorScheme.primary
             )
             StatCard(
                 modifier = Modifier.weight(1f),
                 title = "Tasks",
-                value = "Soon",
+                value = stats.totalTasks.toString(),
                 icon = Icons.Filled.Assignment,
                 color = MaterialTheme.colorScheme.tertiary
             )
@@ -101,17 +109,49 @@ private fun DashboardStats(role: UserRole) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             StatCard(
                 modifier = Modifier.weight(1f),
-                title = "Progress",
-                value = "0%",
+                title = "Todo",
+                value = stats.todoTasks.toString(),
                 icon = Icons.Filled.PendingActions,
                 color = MaterialTheme.colorScheme.secondary
             )
             StatCard(
                 modifier = Modifier.weight(1f),
-                title = "Role",
-                value = role.value,
-                icon = Icons.Filled.CheckCircle,
+                title = "Doing",
+                value = stats.doingTasks.toString(),
+                icon = Icons.Filled.PendingActions,
                 color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Done",
+                value = stats.doneTasks.toString(),
+                icon = Icons.Filled.CheckCircle,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Overdue",
+                value = stats.overdueTasks.toString(),
+                icon = Icons.Filled.PendingActions,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "High priority",
+                value = stats.highPriorityTasks.toString(),
+                icon = Icons.Filled.Assignment,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Completion",
+                value = "$completionPercent%",
+                icon = Icons.Filled.CheckCircle,
+                color = MaterialTheme.colorScheme.secondary
             )
         }
     }

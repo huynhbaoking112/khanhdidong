@@ -239,6 +239,9 @@ internal fun TaskManagerApp(
 
                 else -> HomeScreen(
                     user = user,
+                    dashboardStats = remember(projectsVersion, tasksVersion, user.id, user.role) {
+                        database.getDashboardStats(user)
+                    },
                     onManageUsers = { screen = AppScreen.UserManagement },
                     onManageProjects = { screen = AppScreen.ProjectManagement },
                     onManageTasks = { screen = AppScreen.TaskManagement },
