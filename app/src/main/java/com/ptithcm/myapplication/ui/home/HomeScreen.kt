@@ -16,9 +16,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assignment
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.ManageAccounts
+import androidx.compose.material.icons.filled.PendingActions
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -32,6 +36,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ptithcm.myapplication.data.UserRole
@@ -41,6 +47,7 @@ import com.ptithcm.myapplication.data.UserSession
 internal fun HomeScreen(
     user: UserSession,
     onManageUsers: () -> Unit,
+    onManageProjects: () -> Unit,
     onChangePassword: () -> Unit,
     onLogout: () -> Unit
 ) {
@@ -52,15 +59,103 @@ internal fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         UserHeaderCard(user)
-        RoleAccessCard(user.role)
-        RoleWorkspaceCard(user.role)
+        DashboardStats(user.role)
+        ProjectActionsCard(user.role, onManageProjects)
         if (user.role == UserRole.ADMIN) {
             AdminActionsCard(onManageUsers)
         }
+        RoleWorkspaceCard(user.role)
         AccountActions(
             onChangePassword = onChangePassword,
             onLogout = onLogout
         )
+    }
+}
+
+@Composable
+private fun DashboardStats(role: UserRole) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = "Dashboard",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Projects",
+                value = if (role == UserRole.MEMBER) "My" else "All",
+                icon = Icons.Filled.Folder,
+                color = MaterialTheme.colorScheme.primary
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Tasks",
+                value = "Soon",
+                icon = Icons.Filled.Assignment,
+                color = MaterialTheme.colorScheme.tertiary
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Progress",
+                value = "0%",
+                icon = Icons.Filled.PendingActions,
+                color = MaterialTheme.colorScheme.secondary
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Role",
+                value = role.value,
+                icon = Icons.Filled.CheckCircle,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatCard(
+    modifier: Modifier,
+    title: String,
+    value: String,
+    icon: ImageVector,
+    color: Color
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Surface(
+                modifier = Modifier.size(36.dp),
+                shape = CircleShape,
+                color = color.copy(alpha = 0.14f)
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(8.dp),
+                    tint = color
+                )
+            }
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -117,10 +212,50 @@ private fun UserHeaderCard(user: UserSession) {
 }
 
 @Composable
-private fun AdminActionsCard(onManageUsers: () -> Unit) {
+private fun ProjectActionsCard(
+    role: UserRole,
+    onManageProjects: () -> Unit
+) {
     Card(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Projects",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = if (role == UserRole.MEMBER) {
+                    "View projects you are participating in."
+                } else {
+                    "Create projects, assign members, and update progress status."
+                },
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onManageProjects
+            ) {
+                Icon(Icons.Filled.Folder, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (role == UserRole.MEMBER) "View projects" else "Manage projects")
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminActionsCard(onManageUsers: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(
             modifier = Modifier
@@ -137,7 +272,7 @@ private fun AdminActionsCard(onManageUsers: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 onClick = onManageUsers
             ) {
-                Icon(Icons.Filled.ManageAccounts, contentDescription = null)
+                Icon(Icons.Filled.Group, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Manage users")
             }
