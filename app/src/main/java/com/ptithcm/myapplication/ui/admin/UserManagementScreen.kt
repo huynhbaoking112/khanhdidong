@@ -14,10 +14,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,93 +43,95 @@ internal fun UserManagementScreen(
     var editingUser by remember { mutableStateOf<UserAccount?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var isError by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        UserManagementHeader(onBack)
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            message = null
+        }
+    }
 
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            message?.let {
-                Text(
-                    text = it,
-                    color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-            }
+            UserManagementHeader(onBack)
 
-            Button(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = {
-                    editingUser = null
-                    showEditor = true
-                    message = null
-                }
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Create user")
-            }
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        editingUser = null
+                        showEditor = true
+                        message = null
+                    }
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Create user")
+                }
 
-            if (showEditor) {
-                UserEditorDialog(
-                    editingUser = editingUser,
+                if (showEditor) {
+                    UserEditorDialog(
+                        editingUser = editingUser,
+                        currentAdminId = currentAdminId,
+                        onDismiss = {
+                            showEditor = false
+                            editingUser = null
+                        },
+                        onCancelEdit = {
+                            showEditor = false
+                            editingUser = null
+                            message = null
+                        },
+                        onCreateUser = { username, password, fullName, role ->
+                            val error = onCreateUser(username, password, fullName, role)
+                            message = error ?: "User created successfully"
+                            error == null
+                        },
+                        onUpdateUser = { userId, fullName, role ->
+                            val error = onUpdateUser(userId, fullName, role)
+                            message = error ?: "User updated successfully"
+                            error == null
+                        }
+                    )
+                }
+
+                UserListCard(
+                    users = users,
                     currentAdminId = currentAdminId,
-                    onDismiss = {
-                        showEditor = false
-                        editingUser = null
-                    },
-                    onCancelEdit = {
-                        showEditor = false
-                        editingUser = null
+                    onEditUser = {
+                        editingUser = it
+                        showEditor = true
                         message = null
                     },
-                    onCreateUser = { username, password, fullName, role ->
-                        val error = onCreateUser(username, password, fullName, role)
-                        isError = error != null
-                        message = error ?: "User created successfully"
-                        error == null
+                    onToggleUserActive = { user, nextActive ->
+                        val error = onToggleUserActive(user.id, nextActive)
+                        message = error ?: if (nextActive) "User unlocked" else "User locked"
                     },
-                    onUpdateUser = { userId, fullName, role ->
-                        val error = onUpdateUser(userId, fullName, role)
-                        isError = error != null
-                        message = error ?: "User updated successfully"
-                        error == null
+                    onDeleteUser = { user ->
+                        val error = onDeleteUser(user.id)
+                        message = error ?: "User deleted"
+                        if (error == null && editingUser?.id == user.id) {
+                            editingUser = null
+                            showEditor = false
+                        }
                     }
                 )
             }
-
-            UserListCard(
-                users = users,
-                currentAdminId = currentAdminId,
-                onEditUser = {
-                    editingUser = it
-                    showEditor = true
-                    message = null
-                },
-                onToggleUserActive = { user, nextActive ->
-                    val error = onToggleUserActive(user.id, nextActive)
-                    isError = error != null
-                    message = error ?: if (nextActive) "User unlocked" else "User locked"
-                },
-                onDeleteUser = { user ->
-                    val error = onDeleteUser(user.id)
-                    isError = error != null
-                    message = error ?: "User deleted"
-                    if (error == null && editingUser?.id == user.id) {
-                        editingUser = null
-                        showEditor = false
-                    }
-                }
-            )
         }
     }
 }

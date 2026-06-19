@@ -14,11 +14,16 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,86 +51,90 @@ internal fun ProjectManagementScreen(
     var projectToDelete by remember { mutableStateOf<ProjectSummary?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var isError by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        ProjectHeader(onBack)
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            message = null
+        }
+    }
 
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            message?.let {
-                Text(
-                    text = it,
-                    color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-            }
+            ProjectHeader(onBack)
 
-            if (canManage) {
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = {
-                        editingProject = null
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (canManage) {
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            editingProject = null
+                            showEditor = true
+                            message = null
+                        }
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Create project")
+                    }
+                }
+
+                if (showEditor) {
+                    ProjectEditorDialog(
+                        editingProject = editingProject,
+                        currentUserId = currentUser.id,
+                        users = users.filter { it.isActive },
+                        onDismiss = {
+                            showEditor = false
+                            editingProject = null
+                        },
+                        onCancelEdit = {
+                            showEditor = false
+                            editingProject = null
+                            message = null
+                        },
+                        onCreateProject = { name, description, status, memberIds ->
+                            val error = onCreateProject(name, description, status, memberIds)
+                            message = error ?: "Project created successfully"
+                            error == null
+                        },
+                        onUpdateProject = { projectId, name, description, status, memberIds ->
+                            val error = onUpdateProject(projectId, name, description, status, memberIds)
+                            message = error ?: "Project updated successfully"
+                            error == null
+                        }
+                    )
+                }
+
+                ProjectListCard(
+                    projects = projects,
+                    canManage = canManage,
+                    onEditProject = {
+                        editingProject = it
                         showEditor = true
                         message = null
-                    }
-                ) {
-                    Icon(Icons.Filled.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Create project")
-                }
-            }
-
-            if (showEditor) {
-                ProjectEditorDialog(
-                    editingProject = editingProject,
-                    currentUserId = currentUser.id,
-                    users = users.filter { it.isActive },
-                    onDismiss = {
-                        showEditor = false
-                        editingProject = null
                     },
-                    onCancelEdit = {
-                        showEditor = false
-                        editingProject = null
+                    onDeleteProject = { project ->
+                        projectToDelete = project
                         message = null
-                    },
-                    onCreateProject = { name, description, status, memberIds ->
-                        val error = onCreateProject(name, description, status, memberIds)
-                        isError = error != null
-                        message = error ?: "Project created successfully"
-                        error == null
-                    },
-                    onUpdateProject = { projectId, name, description, status, memberIds ->
-                        val error = onUpdateProject(projectId, name, description, status, memberIds)
-                        isError = error != null
-                        message = error ?: "Project updated successfully"
-                        error == null
                     }
                 )
             }
-
-            ProjectListCard(
-                projects = projects,
-                canManage = canManage,
-                onEditProject = {
-                    editingProject = it
-                    showEditor = true
-                    message = null
-                },
-                onDeleteProject = { project ->
-                    projectToDelete = project
-                    message = null
-                }
-            )
         }
     }
 
@@ -141,9 +150,9 @@ internal fun ProjectManagementScreen(
             },
             confirmButton = {
                 Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
                         val error = onDeleteProject(project.id)
-                        isError = error != null
                         message = error ?: "Project deleted"
                         if (error == null && editingProject?.id == project.id) {
                             editingProject = null

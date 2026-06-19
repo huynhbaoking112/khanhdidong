@@ -11,8 +11,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -51,7 +53,7 @@ internal fun ProjectListCard(
                 fontWeight = FontWeight.SemiBold
             )
             if (projects.isEmpty()) {
-                Text("No projects found.")
+                EmptyProjectState()
             } else {
                 projects.forEach { project ->
                     ProjectRow(
@@ -137,6 +139,7 @@ private fun ProjectRow(
                     }
                     Button(
                         modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                         onClick = { onDeleteProject(project) }
                     ) {
                         Icon(
@@ -147,6 +150,35 @@ private fun ProjectRow(
                         Text("Del")
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyProjectState() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("No projects yet", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Create a project and assign members to start tracking work.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

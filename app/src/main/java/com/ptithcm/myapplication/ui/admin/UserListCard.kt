@@ -11,8 +11,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -52,7 +53,7 @@ internal fun UserListCard(
             )
 
             if (users.isEmpty()) {
-                Text("No users found.")
+                EmptyUserState()
             } else {
                 users.forEach { user ->
                     UserRow(
@@ -130,10 +131,40 @@ private fun UserRow(
                 Button(
                     modifier = Modifier.weight(1f),
                     enabled = !isCurrentAdmin,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = { onDeleteUser(user) }
                 ) {
                     Text("Del")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyUserState() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Group,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("No users found", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = "Create accounts for managers and members.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

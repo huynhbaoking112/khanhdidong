@@ -322,24 +322,28 @@ private fun AppBottomMenu(
         NavigationBarItem(
             selected = selectedScreen == AppScreen.Home,
             onClick = { onSelect(AppScreen.Home) },
+            alwaysShowLabel = false,
             icon = { Icon(Icons.Filled.Dashboard, contentDescription = null) },
             label = { Text("Home") }
         )
         NavigationBarItem(
             selected = selectedScreen == AppScreen.ProjectManagement,
             onClick = { onSelect(AppScreen.ProjectManagement) },
+            alwaysShowLabel = false,
             icon = { Icon(Icons.Filled.Folder, contentDescription = null) },
             label = { Text("Projects") }
         )
         NavigationBarItem(
             selected = selectedScreen == AppScreen.TaskManagement,
             onClick = { onSelect(AppScreen.TaskManagement) },
+            alwaysShowLabel = false,
             icon = { Icon(Icons.Filled.Assignment, contentDescription = null) },
             label = { Text("Tasks") }
         )
         NavigationBarItem(
             selected = selectedScreen == AppScreen.Profile,
             onClick = { onSelect(AppScreen.Profile) },
+            alwaysShowLabel = false,
             icon = { Icon(Icons.Filled.AccountCircle, contentDescription = null) },
             label = { Text("Profile") }
         )
@@ -347,6 +351,7 @@ private fun AppBottomMenu(
             NavigationBarItem(
                 selected = selectedScreen == AppScreen.UserManagement,
                 onClick = { onSelect(AppScreen.UserManagement) },
+                alwaysShowLabel = false,
                 icon = { Icon(Icons.Filled.ManageAccounts, contentDescription = null) },
                 label = { Text("Users") }
             )

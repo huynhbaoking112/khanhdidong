@@ -8,15 +8,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -67,7 +70,7 @@ internal fun TaskListCard(
             }
 
             if (tasks.isEmpty()) {
-                Text("No tasks found.")
+                EmptyTaskState(includeDeleted)
             } else {
                 tasks.forEach { task ->
                     TaskRow(
@@ -151,6 +154,11 @@ private fun TaskRow(
                 ) {
                     Button(
                         modifier = Modifier.fillMaxWidth(),
+                        colors = if (task.isDeleted) {
+                            ButtonDefaults.buttonColors()
+                        } else {
+                            ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        },
                         onClick = { if (task.isDeleted) onRestoreTask(task) else onDeleteTask(task) }
                     ) {
                         Icon(
@@ -161,6 +169,42 @@ private fun TaskRow(
                         Text(if (task.isDeleted) "Restore" else "Del")
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyTaskState(includeDeleted: Boolean) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Assignment,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = if (includeDeleted) "Trash is empty" else "No tasks found",
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = if (includeDeleted) {
+                        "Deleted tasks will appear here when trash is enabled."
+                    } else {
+                        "Create a task or clear filters to see more work items."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -27,9 +28,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,7 +71,7 @@ internal fun TaskManagementScreen(
     var taskToRestore by remember { mutableStateOf<TaskItem?>(null) }
     var showEditor by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var isError by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
     var selectedProjectId by remember(projects) { mutableStateOf(projects.firstOrNull()?.id ?: 0L) }
     var searchQuery by remember { mutableStateOf("") }
     var statusFilter by remember { mutableStateOf<TaskStatus?>(null) }
@@ -83,137 +88,140 @@ internal fun TaskManagementScreen(
         .filter { task -> statusFilter == null || task.status == statusFilter }
         .filter { task -> priorityFilter == null || task.priority == priorityFilter }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        OutlinedButton(onClick = onBack) {
-            Icon(Icons.Filled.ArrowBack, contentDescription = null)
-            Text("Back to home")
-        }
-
-        ProjectPickerCard(
-            projects = projects,
-            selectedProjectId = selectedProjectId,
-            onSelectProject = {
-                selectedProjectId = it
-                editingTask = null
-                message = null
-                searchQuery = ""
-                statusFilter = null
-                priorityFilter = null
-            }
-        )
-
-        TaskFilterCard(
-            searchQuery = searchQuery,
-            statusFilter = statusFilter,
-            priorityFilter = priorityFilter,
-            onSearchQueryChange = { searchQuery = it },
-            onStatusFilterChange = { statusFilter = it },
-            onPriorityFilterChange = { priorityFilter = it },
-            onClearFilters = {
-                searchQuery = ""
-                statusFilter = null
-                priorityFilter = null
-            }
-        )
-
+    LaunchedEffect(message) {
         message?.let {
-            Text(
-                text = it,
-                color = if (isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-            )
+            snackbarHostState.showSnackbar(it)
+            message = null
         }
+    }
 
-        if (selectedProject == null) {
-            Text("No project available. Create a project before adding tasks.")
-        } else if (canManage) {
-            Button(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(innerPadding)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            OutlinedButton(onClick = onBack) {
+                Icon(Icons.Filled.ArrowBack, contentDescription = null)
+                Text("Back to home")
+            }
+
+            ProjectPickerCard(
+                projects = projects,
+                selectedProjectId = selectedProjectId,
+                onSelectProject = {
+                    selectedProjectId = it
                     editingTask = null
+                    message = null
+                    searchQuery = ""
+                    statusFilter = null
+                    priorityFilter = null
+                }
+            )
+
+            TaskFilterCard(
+                searchQuery = searchQuery,
+                statusFilter = statusFilter,
+                priorityFilter = priorityFilter,
+                onSearchQueryChange = { searchQuery = it },
+                onStatusFilterChange = { statusFilter = it },
+                onPriorityFilterChange = { priorityFilter = it },
+                onClearFilters = {
+                    searchQuery = ""
+                    statusFilter = null
+                    priorityFilter = null
+                }
+            )
+
+            if (selectedProject == null) {
+                Text("No project available. Create a project before adding tasks.")
+            } else if (canManage) {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = {
+                        editingTask = null
+                        showEditor = true
+                        message = null
+                    }
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Create task")
+                }
+            }
+
+            if (showEditor && selectedProject != null) {
+                TaskEditorDialog(
+                    editingTask = editingTask,
+                    projectId = selectedProject.id,
+                    projectName = selectedProject.name,
+                    users = users.filter { it.isActive && selectedProject.memberIds.contains(it.id) },
+                    onDismiss = {
+                        showEditor = false
+                        editingTask = null
+                    },
+                    onCancelEdit = {
+                        showEditor = false
+                        editingTask = null
+                        message = null
+                    },
+                    onCreateTask = { title, description, assigneeId, status, priority, dueDate ->
+                        val error = onCreateTask(title, description, selectedProject.id, assigneeId, status, priority, dueDate)
+                        message = error ?: "Task created successfully"
+                        error == null
+                    },
+                    onUpdateTask = { taskId, title, description, assigneeId, status, priority, dueDate ->
+                        val error = onUpdateTask(taskId, title, description, selectedProject.id, assigneeId, status, priority, dueDate)
+                        message = error ?: "Task updated successfully"
+                        error == null
+                    }
+                )
+            }
+
+            detailTask?.let { task ->
+                TaskDetailDialog(
+                    task = task,
+                    canManage = canManage,
+                    onDismiss = { detailTask = null },
+                    onSave = { status, progress, notes ->
+                        val error = onUpdateTaskDetails(task.id, status, progress, notes)
+                        message = error ?: "Task detail updated"
+                        error == null
+                    }
+                )
+            }
+
+            TaskListCard(
+                projectName = selectedProject?.name ?: "No project",
+                tasks = projectTasks,
+                canManage = canManage,
+                includeDeleted = includeDeleted,
+                onIncludeDeletedChange = onIncludeDeletedChange,
+                onViewTask = {
+                    detailTask = it
+                    message = null
+                },
+                onEditTask = {
+                    editingTask = it
                     showEditor = true
                     message = null
-                }
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Create task")
-            }
-        }
-
-        if (showEditor && selectedProject != null) {
-            TaskEditorDialog(
-                editingTask = editingTask,
-                projectId = selectedProject.id,
-                projectName = selectedProject.name,
-                users = users.filter { it.isActive && selectedProject.memberIds.contains(it.id) },
-                onDismiss = {
-                    showEditor = false
-                    editingTask = null
                 },
-                onCancelEdit = {
-                    showEditor = false
-                    editingTask = null
+                onDeleteTask = { task ->
+                    taskToDelete = task
                     message = null
                 },
-                onCreateTask = { title, description, assigneeId, status, priority, dueDate ->
-                    val error = onCreateTask(title, description, selectedProject.id, assigneeId, status, priority, dueDate)
-                    isError = error != null
-                    message = error ?: "Task created successfully"
-                    error == null
-                },
-                onUpdateTask = { taskId, title, description, assigneeId, status, priority, dueDate ->
-                    val error = onUpdateTask(taskId, title, description, selectedProject.id, assigneeId, status, priority, dueDate)
-                    isError = error != null
-                    message = error ?: "Task updated successfully"
-                    error == null
+                onRestoreTask = { task ->
+                    taskToRestore = task
+                    message = null
                 }
             )
         }
-
-        detailTask?.let { task ->
-            TaskDetailDialog(
-                task = task,
-                canManage = canManage,
-                onDismiss = { detailTask = null },
-                onSave = { status, progress, notes ->
-                    val error = onUpdateTaskDetails(task.id, status, progress, notes)
-                    isError = error != null
-                    message = error ?: "Task detail updated"
-                    error == null
-                }
-            )
-        }
-
-        TaskListCard(
-            projectName = selectedProject?.name ?: "No project",
-            tasks = projectTasks,
-            canManage = canManage,
-            includeDeleted = includeDeleted,
-            onIncludeDeletedChange = onIncludeDeletedChange,
-            onViewTask = {
-                detailTask = it
-                message = null
-            },
-            onEditTask = {
-                editingTask = it
-                showEditor = true
-                message = null
-            },
-            onDeleteTask = { task ->
-                taskToDelete = task
-                message = null
-            },
-            onRestoreTask = { task ->
-                taskToRestore = task
-                message = null
-            }
-        )
     }
 
     taskToDelete?.let { task ->
@@ -228,9 +236,9 @@ internal fun TaskManagementScreen(
             },
             confirmButton = {
                 Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     onClick = {
                         val error = onDeleteTask(task.id)
-                        isError = error != null
                         message = error ?: "Task moved to trash"
                         if (error == null && editingTask?.id == task.id) editingTask = null
                         if (error == null && detailTask?.id == task.id) detailTask = null
@@ -257,7 +265,6 @@ internal fun TaskManagementScreen(
                 Button(
                     onClick = {
                         val error = onRestoreTask(task.id)
-                        isError = error != null
                         message = error ?: "Task restored"
                         taskToRestore = null
                     }
